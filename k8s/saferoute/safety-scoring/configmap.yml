@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: safety-scoring-config
+  namespace: saferoute
+data:
+  database.name: "saferoute"
+  log.level: "info"
+  scoring.algorithm.version: "v1"
+

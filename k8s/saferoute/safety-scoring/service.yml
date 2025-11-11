@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: safety-scoring
+  namespace: saferoute
+  labels:
+    app: safety-scoring
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: safety-scoring
+

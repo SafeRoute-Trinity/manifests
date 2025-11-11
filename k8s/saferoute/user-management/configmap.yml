@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-management-config
+  namespace: saferoute
+data:
+  database.name: "saferoute"
+  # TODO: Change to your Auth0 domain
+  auth0.domain: "your-domain.auth0.com"
+  log.level: "info"
+

@@ -1,0 +1,62 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: saferoute-ingress
+  namespace: saferoute
+  annotations:
+    # For Minikube
+    kubernetes.io/ingress.class: nginx
+    # TODO: Uncomment and configure for production with SSL
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    # TODO: For EKS, use ALB instead
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+spec:
+  # TODO: Uncomment and configure your domain for production
+  # tls:
+  # - hosts:
+  #   - api.saferoute.com
+  #   secretName: saferoute-tls
+  rules:
+  # TODO: Change to your actual domain
+  - host: saferoute.local
+    http:
+      paths:
+      - path: /api/users
+        pathType: Prefix
+        backend:
+          service:
+            name: user-management
+            port:
+              number: 80
+      - path: /api/routing
+        pathType: Prefix
+        backend:
+          service:
+            name: routing-service
+            port:
+              number: 80
+      - path: /api/sos
+        pathType: Prefix
+        backend:
+          service:
+            name: sos
+            port:
+              number: 80
+      - path: /api/safety
+        pathType: Prefix
+        backend:
+          service:
+            name: safety-scoring
+            port:
+              number: 80
+      - path: /api/feedback
+        pathType: Prefix
+        backend:
+          service:
+            name: feedback
+            port:
+              number: 80
+

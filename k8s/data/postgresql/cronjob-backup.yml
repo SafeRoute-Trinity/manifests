@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgresql-backup
+  namespace: data
+spec:
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgis/postgis:15-3.4-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              BACKUP_FILE="/backup/saferoute-$(date +%Y%m%d-%H%M%S).sql.gz"
+              echo "Creating backup: $BACKUP_FILE"
+              
+              PGPASSWORD=$POSTGRES_PASSWORD pg_dump \
+                -h postgresql.data.svc.cluster.local \
+                -U $POSTGRES_USER \
+                -d $POSTGRES_DB \
+                --format=custom \
+                --compress=9 \
+                | gzip > $BACKUP_FILE
+              
+              # TODO: Uncomment and configure for EKS with S3
+              # aws s3 cp $BACKUP_FILE s3://YOUR-BUCKET-NAME/postgresql/
+              
+              echo "Backup complete: $BACKUP_FILE"
+            env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: password
+            - name: POSTGRES_DB
+              value: saferoute
+            # TODO: Uncomment for EKS
+            # - name: AWS_DEFAULT_REGION
+            #   value: us-east-1
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
+          volumes:
+          - name: backup
+            emptyDir: {}
+          # TODO: Uncomment for EKS with S3 backups
+          # serviceAccountName: postgresql-backup-sa
+

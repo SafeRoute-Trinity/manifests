@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sos-config
+  namespace: saferoute
+data:
+  database.name: "saferoute"
+  log.level: "info"
+  # TODO: Configure emergency services endpoints
+  emergency.services.enabled: "true"
+
