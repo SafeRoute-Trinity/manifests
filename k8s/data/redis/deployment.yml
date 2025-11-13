@@ -1,11 +1,14 @@
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: redis
   namespace: data
+  labels:
+    app: redis
 spec:
-  serviceName: redis
   replicas: 1
+  strategy:
+    type: Recreate  # Required for stateful workloads with persistent volumes
   selector:
     matchLabels:
       app: redis
@@ -14,6 +17,7 @@ spec:
       labels:
         app: redis
     spec:
+      restartPolicy: Always  # Explicit auto-retry policy
       containers:
       - name: redis
         image: redis:7-alpine
@@ -45,24 +49,25 @@ spec:
         livenessProbe:
           exec:
             command:
-            - redis-cli
-            - ping
+            - /bin/sh
+            - -c
+            - redis-cli -a "$REDIS_PASSWORD" ping
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6  # Auto-retry: will restart container after 6 failures
         readinessProbe:
           exec:
             command:
-            - redis-cli
-            - ping
+            - /bin/sh
+            - -c
+            - redis-cli -a "$REDIS_PASSWORD" ping
           initialDelaySeconds: 5
           periodSeconds: 5
-  volumeClaimTemplates:
-  - metadata:
-      name: redis-data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: managed-premium  # AKS default Premium SSD
-      resources:
-        requests:
-          storage: 10Gi
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-data
 

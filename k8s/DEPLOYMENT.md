@@ -1,33 +1,94 @@
 # SafeRoute Kubernetes Deployment Guide
 
-This guide provides step-by-step instructions to deploy SafeRoute microservices on both **Minikube** (local development) and **AWS EKS** (production).
+This guide provides step-by-step instructions to deploy SafeRoute microservices on **Azure Kubernetes Service (AKS)**.
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
-- [Option 1: Minikube Deployment](#option-1-minikube-deployment)
-- [Option 2: AWS EKS Deployment](#option-2-aws-eks-deployment)
+- [Azure AKS Deployment](#azure-aks-deployment)
 - [Post-Deployment Steps](#post-deployment-steps)
 - [Verification & Testing](#verification--testing)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Option 1: Minikube Deployment
+## Prerequisites
 
-### Step 1: Start Minikube
+Before deploying, ensure you have:
+- Azure CLI installed and configured (`az login`)
+- `kubectl` installed
+- `helm` installed (for some optional components)
+- An Azure subscription with appropriate permissions
+- Azure Container Registry (ACR) access (if using private images)
+
+---
+
+## Azure AKS Deployment
+
+### Step 1: Create AKS Cluster
 ```bash
-# Start Minikube with sufficient resources
-minikube start --memory=8192 --cpus=4 --driver=docker
+# Set variables (adjust as needed)
+RESOURCE_GROUP="saferoute-rg"
+AKS_CLUSTER_NAME="saferoute-aks"
+LOCATION="eastus"
+NODE_COUNT=3
+NODE_VM_SIZE="Standard_D2s_v3"
 
-# Verify Minikube is running
-minikube status
+# Create resource group
+az group create --name $RESOURCE_GROUP --location $LOCATION
 
-# Enable required addons
-minikube addons enable ingress
-minikube addons enable metrics-server
+# Create AKS cluster (takes 10-15 minutes)
+az aks create \
+  --resource-group $RESOURCE_GROUP \
+  --name $AKS_CLUSTER_NAME \
+  --node-count $NODE_COUNT \
+  --node-vm-size $NODE_VM_SIZE \
+  --enable-managed-identity \
+  --enable-azure-rbac \
+  --enable-addons monitoring \
+  --generate-ssh-keys
+
+# Get AKS credentials
+az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_CLUSTER_NAME
+
+# Verify cluster is accessible
+kubectl get nodes
 ```
 
-### Step 2: Create Namespaces
+### Step 2: Install NGINX Ingress Controller (Optional but Recommended)
+```bash
+# Add NGINX Ingress Helm repository
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+# Install NGINX Ingress Controller
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=LoadBalancer \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
+
+# Wait for LoadBalancer IP to be assigned
+kubectl get service ingress-nginx-controller -n ingress-nginx -w
+
+# Get the external IP
+kubectl get service ingress-nginx-controller -n ingress-nginx
+```
+
+### Step 3: Verify Storage Classes (Optional)
+```bash
+# AKS comes with default storage classes pre-configured
+# Check available storage classes
+kubectl get storageclass
+
+# AKS typically provides:
+# - managed-premium: Premium SSD (Premium_LRS) - recommended for databases
+# - default or managed-csi: Standard SSD (Standard_LRS)
+
+# Note: If you need custom settings (ReadOnly caching, Retain policy, etc.),
+# you can create a custom storage class using base/storageclass.yml
+```
+
+### Step 4: Create Namespaces
 ```bash
 # Navigate to the k8s directory
 cd saferoute/k8s
@@ -39,10 +100,10 @@ kubectl apply -f namespaces/namespaces.yml
 kubectl get namespaces
 ```
 
-### Step 3: Create Secrets
+### Step 5: Create Secrets
 ```bash
-# Create PostgreSQL credentials
-kubectl create secret generic postgresql-credentials \
+# Create PostgreSQL credentials (note: secret name must match deployment references)
+kubectl create secret generic postgresql-secret \
   --from-literal=username=saferoute_user \
   --from-literal=password=$(openssl rand -base64 32) \
   -n data
@@ -64,20 +125,26 @@ kubectl get secrets -n data
 kubectl get secrets -n saferoute
 ```
 
-### Step 4: Deploy Data Layer (PostgreSQL & Redis)
+### Step 6: Deploy Data Layer (PostgreSQL & Redis)
 ```bash
 # Deploy PostgreSQL ConfigMaps
 kubectl apply -f data/postgresql/configmap.yml
 
-# Deploy PostgreSQL StatefulSet and Service
-kubectl apply -f data/postgresql/statefulset.yml
+# Deploy PostgreSQL PVC (for Deployment)
+kubectl apply -f data/postgresql/pvc.yml
+
+# Deploy PostgreSQL Deployment and Service
+kubectl apply -f data/postgresql/deployment.yml
 kubectl apply -f data/postgresql/service.yml
 
-# Wait for PostgreSQL to be ready (this may take 2-3 minutes)
-kubectl wait --for=condition=ready pod -l app=postgresql -n data --timeout=300s
+# Wait for PostgreSQL to be ready (may take 3-5 minutes for Azure Disk provisioning)
+kubectl wait --for=condition=ready pod -l app=postgresql -n data --timeout=600s
 
-# Deploy Redis StatefulSet and Service
-kubectl apply -f data/redis/statefulset.yml
+# Deploy Redis PVC (for Deployment)
+kubectl apply -f data/redis/pvc.yml
+
+# Deploy Redis Deployment and Service
+kubectl apply -f data/redis/deployment.yml
 kubectl apply -f data/redis/service.yml
 
 # Wait for Redis to be ready
@@ -88,7 +155,7 @@ kubectl get pods -n data
 kubectl get pvc -n data
 ```
 
-### Step 5: Deploy SafeRoute Application Services
+### Step 7: Deploy SafeRoute Application Services
 ```bash
 # Deploy ConfigMaps for all services
 kubectl apply -f saferoute/user-management/configmap.yml
@@ -125,22 +192,32 @@ kubectl get pods -n saferoute
 kubectl get services -n saferoute
 ```
 
-### Step 6: Deploy Ingress
+### Step 8: Deploy Ingress
 ```bash
 # Deploy Ingress resource
 kubectl apply -f saferoute/ingress.yml
 
-# Get Ingress URL
-minikube ip
+# Wait for Ingress to be ready (1-2 minutes)
+kubectl get ingress -n saferoute -w
 
-# Add to /etc/hosts for local testing
-echo "$(minikube ip) saferoute.local" | sudo tee -a /etc/hosts
+# Get the external IP from NGINX Ingress Controller
+INGRESS_IP=$(kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-# Test Ingress (wait 1-2 minutes for Ingress to be ready)
-curl http://saferoute.local/api/users/health
+# Get the hostname from Ingress
+INGRESS_HOST=$(kubectl get ingress saferoute-ingress -n saferoute -o jsonpath='{.spec.rules[0].host}')
+
+echo "Ingress IP: $INGRESS_IP"
+echo "Ingress Host: $INGRESS_HOST"
+
+# TODO: Configure your DNS to point to the LoadBalancer IP
+# Example: Create an A record in your DNS provider
+# saferoute.yourdomain.com -> $INGRESS_IP
+
+# Test Ingress (replace with your actual domain or use the IP)
+curl -H "Host: saferoute.local" http://$INGRESS_IP/api/users/health
 ```
 
-### Step 7: Deploy Network Policies
+### Step 9: Deploy Network Policies
 ```bash
 # Apply network policies for security
 kubectl apply -f base/networkpolicies.yml
@@ -150,7 +227,7 @@ kubectl get networkpolicies -n data
 kubectl get networkpolicies -n saferoute
 ```
 
-### Step 8: Deploy Monitoring Stack (Optional)
+### Step 10: Deploy Monitoring Stack (Optional)
 ```bash
 # Create RBAC for Prometheus
 kubectl apply -f monitoring/prometheus/rbac.yml
@@ -170,320 +247,60 @@ kubectl apply -f monitoring/grafana/service.yml
 kubectl wait --for=condition=ready pod -l app=prometheus -n monitoring --timeout=300s
 kubectl wait --for=condition=ready pod -l app=grafana -n monitoring --timeout=300s
 
-# Access Prometheus
-minikube service prometheus -n monitoring
+# Access Prometheus via port-forward
+kubectl port-forward -n monitoring svc/prometheus 9090:9090 &
 
-# Access Grafana (default: admin/admin)
-minikube service grafana -n monitoring
+# Access Grafana via port-forward (default: admin/admin)
+kubectl port-forward -n monitoring svc/grafana 3000:3000 &
+
+# Open in browser: http://localhost:3000
 
 # Verify monitoring is scraping metrics
 kubectl get pods -n monitoring
 ```
 
-### Step 9: Deploy Backup CronJob (Optional)
+### Step 11: Setup Azure Blob Storage Backup for PostgreSQL (Optional)
 ```bash
+# Set variables
+STORAGE_ACCOUNT_NAME="saferoutebackups$(openssl rand -hex 4)"
+CONTAINER_NAME="postgresql-backups"
+RESOURCE_GROUP="saferoute-rg"
+LOCATION="eastus"
+
+# Create storage account
+az storage account create \
+  --name $STORAGE_ACCOUNT_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION \
+  --sku Standard_LRS
+
+# Create container
+az storage container create \
+  --name $CONTAINER_NAME \
+  --account-name $STORAGE_ACCOUNT_NAME \
+  --auth-mode login
+
+# Get storage account key
+STORAGE_KEY=$(az storage account keys list \
+  --resource-group $RESOURCE_GROUP \
+  --account-name $STORAGE_ACCOUNT_NAME \
+  --query "[0].value" -o tsv)
+
+# Create Kubernetes secret for storage account
+kubectl create secret generic azure-storage-credentials \
+  --from-literal=account-name=$STORAGE_ACCOUNT_NAME \
+  --from-literal=account-key=$STORAGE_KEY \
+  --from-literal=container-name=$CONTAINER_NAME \
+  -n data
+
+# Update cronjob-backup.yml to use Azure Blob Storage
+# TODO: Modify data/postgresql/cronjob-backup.yml to use Azure CLI or azcopy
+
 # Deploy PostgreSQL backup CronJob
 kubectl apply -f data/postgresql/cronjob-backup.yml
 
 # Verify CronJob is created
 kubectl get cronjobs -n data
-```
-
----
-
-## Option 2: AWS EKS Deployment
-
-### Step 1: Create EKS Cluster
-```bash
-# Create EKS cluster (takes 15-20 minutes)
-# TODO: Change cluster name and region as needed
-eksctl create cluster \
-  --name saferoute-prod \
-  --region us-east-1 \
-  --nodegroup-name standard-workers \
-  --node-type t3.medium \
-  --nodes 3 \
-  --nodes-min 2 \
-  --nodes-max 5 \
-  --managed
-
-# Verify cluster is created
-kubectl get nodes
-
-# Update kubeconfig (if needed)
-aws eks update-kubeconfig --name saferoute-prod --region us-east-1
-```
-
-### Step 2: Install EBS CSI Driver
-```bash
-# Create IAM policy for EBS CSI Driver
-curl -o ebs-csi-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/master/docs/example-iam-policy.json
-
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-aws iam create-policy \
-  --policy-name Amazon_EBS_CSI_Driver_Policy \
-  --policy-document file://ebs-csi-policy.json
-
-# Create IAM service account for EBS CSI Driver
-eksctl create iamserviceaccount \
-  --name ebs-csi-controller-sa \
-  --namespace kube-system \
-  --cluster saferoute-prod \
-  --attach-policy-arn arn:aws:iam::${AWS_ACCOUNT_ID}:policy/Amazon_EBS_CSI_Driver_Policy \
-  --approve \
-  --override-existing-serviceaccounts \
-  --region us-east-1
-
-# Install EBS CSI Driver
-kubectl apply -k "github.com/kubernetes-sigs/aws-ebs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-1.25"
-
-# Verify EBS CSI Driver is running
-kubectl get pods -n kube-system | grep ebs-csi
-```
-
-### Step 3: Install AWS Load Balancer Controller
-```bash
-# Create IAM policy for AWS Load Balancer Controller
-curl -o alb-iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.4.0/docs/install/iam_policy.json
-
-aws iam create-policy \
-  --policy-name AWSLoadBalancerControllerIAMPolicy \
-  --policy-document file://alb-iam-policy.json
-
-# Create IAM service account
-eksctl create iamserviceaccount \
-  --cluster=saferoute-prod \
-  --namespace=kube-system \
-  --name=aws-load-balancer-controller \
-  --attach-policy-arn=arn:aws:iam::${AWS_ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy \
-  --override-existing-serviceaccounts \
-  --approve \
-  --region us-east-1
-
-# Install AWS Load Balancer Controller using Helm
-helm repo add eks https://aws.github.io/eks-charts
-helm repo update
-
-helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-  -n kube-system \
-  --set clusterName=saferoute-prod \
-  --set serviceAccount.create=false \
-  --set serviceAccount.name=aws-load-balancer-controller
-
-# Verify installation
-kubectl get deployment -n kube-system aws-load-balancer-controller
-```
-
-### Step 4: Create Storage Class
-```bash
-# Navigate to k8s directory
-cd saferoute/k8s
-
-# Apply EBS StorageClass
-kubectl apply -f base/storageclass.yml
-
-# Verify StorageClass
-kubectl get storageclass
-```
-
-### Step 5: Create Namespaces
-```bash
-# Create all namespaces
-kubectl apply -f namespaces/namespaces.yml
-
-# Verify namespaces
-kubectl get namespaces
-```
-
-### Step 6: Create Secrets with AWS Secrets Manager (Recommended)
-```bash
-# Create secrets in AWS Secrets Manager
-aws secretsmanager create-secret \
-  --name saferoute/postgresql/username \
-  --secret-string "saferoute_user" \
-  --region us-east-1
-
-aws secretsmanager create-secret \
-  --name saferoute/postgresql/password \
-  --secret-string "$(openssl rand -base64 32)" \
-  --region us-east-1
-
-aws secretsmanager create-secret \
-  --name saferoute/redis/password \
-  --secret-string "$(openssl rand -base64 32)" \
-  --region us-east-1
-
-# TODO: Add your actual Auth0 credentials
-aws secretsmanager create-secret \
-  --name saferoute/auth0/client-id \
-  --secret-string "YOUR_AUTH0_CLIENT_ID" \
-  --region us-east-1
-
-aws secretsmanager create-secret \
-  --name saferoute/auth0/client-secret \
-  --secret-string "YOUR_AUTH0_CLIENT_SECRET" \
-  --region us-east-1
-
-# Alternative: Create secrets directly in Kubernetes (simpler but less secure)
-kubectl create secret generic postgresql-credentials \
-  --from-literal=username=saferoute_user \
-  --from-literal=password=$(openssl rand -base64 32) \
-  -n data
-
-kubectl create secret generic redis-credentials \
-  --from-literal=password=$(openssl rand -base64 32) \
-  -n data
-
-kubectl create secret generic auth0-credentials \
-  --from-literal=client-id=YOUR_AUTH0_CLIENT_ID \
-  --from-literal=client-secret=YOUR_AUTH0_CLIENT_SECRET \
-  -n saferoute
-```
-
-### Step 7: Deploy Data Layer
-```bash
-# Deploy PostgreSQL
-kubectl apply -f data/postgresql/configmap.yml
-kubectl apply -f data/postgresql/statefulset.yml
-kubectl apply -f data/postgresql/service.yml
-
-# Wait for PostgreSQL (may take 3-5 minutes for EBS volume provisioning)
-kubectl wait --for=condition=ready pod -l app=postgresql -n data --timeout=600s
-
-# Deploy Redis
-kubectl apply -f data/redis/statefulset.yml
-kubectl apply -f data/redis/service.yml
-
-# Wait for Redis
-kubectl wait --for=condition=ready pod -l app=redis -n data --timeout=300s
-
-# Verify data layer and check EBS volumes
-kubectl get pods -n data
-kubectl get pvc -n data
-aws ec2 describe-volumes --filters "Name=tag:kubernetes.io/created-for/pvc/namespace,Values=data"
-```
-
-### Step 8: Deploy Application Services
-```bash
-# Deploy ConfigMaps
-kubectl apply -f saferoute/user-management/configmap.yml
-kubectl apply -f saferoute/routing-service/configmap.yml
-kubectl apply -f saferoute/sos/configmap.yml
-kubectl apply -f saferoute/safety-scoring/configmap.yml
-kubectl apply -f saferoute/feedback/configmap.yml
-
-# Deploy all services
-kubectl apply -f saferoute/user-management/
-kubectl apply -f saferoute/routing-service/
-kubectl apply -f saferoute/sos/
-kubectl apply -f saferoute/safety-scoring/
-kubectl apply -f saferoute/feedback/
-
-# Wait for all services
-kubectl wait --for=condition=ready pod -l tier=backend -n saferoute --timeout=300s
-
-# Verify
-kubectl get pods -n saferoute
-kubectl get services -n saferoute
-```
-
-### Step 9: Deploy Ingress with ALB
-```bash
-# Deploy Ingress (will automatically create AWS ALB)
-kubectl apply -f saferoute/ingress.yml
-
-# Wait for ALB to be provisioned (2-3 minutes)
-kubectl get ingress -n saferoute -w
-
-# Get ALB DNS name
-kubectl get ingress saferoute-ingress -n saferoute -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-
-# TODO: Configure your DNS to point to the ALB
-# Example: Create a CNAME record in Route 53
-# saferoute.yourdomain.com -> k8s-saferoute-xxxxx.us-east-1.elb.amazonaws.com
-```
-
-### Step 10: Deploy Network Policies
-```bash
-# Apply network policies
-kubectl apply -f base/networkpolicies.yml
-
-# Verify
-kubectl get networkpolicies --all-namespaces
-```
-
-### Step 11: Setup S3 Backup for PostgreSQL
-```bash
-# Create S3 bucket for backups
-# TODO: Change bucket name to be unique
-aws s3 mb s3://saferoute-backups-${AWS_ACCOUNT_ID} --region us-east-1
-
-# Create IAM policy for backups
-cat > backup-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:ListBucket",
-        "s3:DeleteObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::saferoute-backups-${AWS_ACCOUNT_ID}",
-        "arn:aws:s3:::saferoute-backups-${AWS_ACCOUNT_ID}/*"
-      ]
-    }
-  ]
-}
-EOF
-
-aws iam create-policy \
-  --policy-name SafeRouteBackupPolicy \
-  --policy-document file://backup-policy.json
-
-# Create service account with IAM role
-eksctl create iamserviceaccount \
-  --name postgresql-backup-sa \
-  --namespace data \
-  --cluster saferoute-prod \
-  --attach-policy-arn arn:aws:iam::${AWS_ACCOUNT_ID}:policy/SafeRouteBackupPolicy \
-  --approve \
-  --region us-east-1
-
-# Deploy backup CronJob
-kubectl apply -f data/postgresql/cronjob-backup.yml
-
-# Verify
-kubectl get cronjobs -n data
-```
-
-### Step 12: Deploy Monitoring Stack
-```bash
-# Deploy Prometheus
-kubectl apply -f monitoring/prometheus/rbac.yml
-kubectl apply -f monitoring/prometheus/configmap.yml
-kubectl apply -f monitoring/prometheus/deployment.yml
-kubectl apply -f monitoring/prometheus/service.yml
-
-# Deploy Grafana
-kubectl apply -f monitoring/grafana/deployment.yml
-kubectl apply -f monitoring/grafana/service.yml
-
-# Wait for monitoring stack
-kubectl wait --for=condition=ready pod -l app=prometheus -n monitoring --timeout=300s
-kubectl wait --for=condition=ready pod -l app=grafana -n monitoring --timeout=300s
-
-# Access Prometheus (for EKS, use port-forward or LoadBalancer)
-kubectl port-forward -n monitoring svc/prometheus 9090:9090 &
-
-# Access Grafana
-kubectl port-forward -n monitoring svc/grafana 3000:3000 &
-
-# Open in browser: http://localhost:3000 (admin/admin)
 ```
 
 ---
@@ -575,18 +392,19 @@ kubectl top pods -n data
 
 ### Test API Endpoints
 ```bash
-# For Minikube
-export SAFEROUTE_HOST=saferoute.local
+# Get the Ingress IP
+INGRESS_IP=$(kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+INGRESS_HOST=$(kubectl get ingress saferoute-ingress -n saferoute -o jsonpath='{.spec.rules[0].host}')
 
-# For EKS
-export SAFEROUTE_HOST=$(kubectl get ingress saferoute-ingress -n saferoute -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+# Test endpoints (using Host header or actual domain)
+curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/users/health
+curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/routing/health
+curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/sos/health
+curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/safety/health
+curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/feedback/health
 
-# Test endpoints
-curl http://${SAFEROUTE_HOST}/api/users/health
-curl http://${SAFEROUTE_HOST}/api/routing/health
-curl http://${SAFEROUTE_HOST}/api/sos/health
-curl http://${SAFEROUTE_HOST}/api/safety/health
-curl http://${SAFEROUTE_HOST}/api/feedback/health
+# Or if DNS is configured:
+# curl https://saferoute.yourdomain.com/api/users/health
 ```
 
 ---
@@ -618,19 +436,26 @@ kubectl run -it --rm debug --image=postgres:15-alpine --restart=Never -n data --
   psql -h postgresql.data.svc.cluster.local -U saferoute_user -d saferoute
 ```
 
-### EBS Volume Issues
+### Azure Disk Volume Issues
 ```bash
 # Check PVC status
 kubectl get pvc -n data
 
 # Describe PVC for events
-kubectl describe pvc postgresql-data-postgresql-0 -n data
+kubectl describe pvc postgresql-data -n data
+kubectl describe pvc redis-data -n data
 
 # Check StorageClass
 kubectl get storageclass
 
-# Check EBS CSI Driver
-kubectl get pods -n kube-system | grep ebs-csi
+# Check Azure Disk CSI Driver (should be running by default in AKS)
+kubectl get pods -n kube-system | grep csi-azuredisk
+
+# Check Azure Disk CSI Driver logs if issues
+kubectl logs -n kube-system -l app=csi-azuredisk-controller
+
+# List Azure Disks in resource group
+az disk list --resource-group $RESOURCE_GROUP --query "[].{Name:name,Size:diskSizeGb,State:diskState}" -o table
 ```
 
 ### Ingress Not Working
@@ -641,12 +466,15 @@ kubectl get ingress -n saferoute
 # Describe Ingress for events
 kubectl describe ingress saferoute-ingress -n saferoute
 
-# For Minikube: Check Ingress addon
-minikube addons list | grep ingress
+# Check NGINX Ingress Controller
+kubectl get pods -n ingress-nginx
+kubectl get service ingress-nginx-controller -n ingress-nginx
 
-# For EKS: Check ALB Controller
-kubectl get deployment -n kube-system aws-load-balancer-controller
-kubectl logs -n kube-system deployment/aws-load-balancer-controller
+# Check NGINX Ingress Controller logs
+kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller
+
+# Verify LoadBalancer has external IP
+kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 ```
 
 ### Network Policy Issues
@@ -661,50 +489,76 @@ kubectl apply -f base/networkpolicies.yml
 
 ### Clean Up Everything
 ```bash
-# For Minikube
-minikube delete
+# CAUTION: This deletes everything!
 
-# For EKS (CAUTION: This deletes everything!)
 # Delete all resources first
 kubectl delete namespace saferoute
 kubectl delete namespace data
 kubectl delete namespace monitoring
+kubectl delete namespace ingress-nginx
 
-# Delete EKS cluster
-eksctl delete cluster --name saferoute-prod --region us-east-1
+# Delete AKS cluster and resource group
+az aks delete --resource-group $RESOURCE_GROUP --name $AKS_CLUSTER_NAME --yes
+
+# Delete resource group (this will delete all resources including storage accounts)
+az group delete --name $RESOURCE_GROUP --yes --no-wait
 ```
 
 ---
 
 ## Cost Optimization Tips
 
-### EKS Cost Savings
+### AKS Cost Savings
 ```bash
-# Use spot instances for non-critical workloads
-eksctl create nodegroup \
-  --cluster saferoute-prod \
-  --region us-east-1 \
-  --name spot-workers \
-  --node-type t3.medium \
-  --nodes 2 \
-  --spot
+# Use Spot node pools for non-critical workloads
+az aks nodepool add \
+  --resource-group $RESOURCE_GROUP \
+  --cluster-name $AKS_CLUSTER_NAME \
+  --name spotpool \
+  --node-count 2 \
+  --node-vm-size Standard_D2s_v3 \
+  --priority Spot \
+  --eviction-policy Delete \
+  --spot-max-price -1 \
+  --enable-cluster-autoscaler \
+  --min-count 1 \
+  --max-count 5
 
 # Scale down during off-hours
 kubectl scale deployment --all --replicas=1 -n saferoute
 
+# Scale down node pool
+az aks scale \
+  --resource-group $RESOURCE_GROUP \
+  --name $AKS_CLUSTER_NAME \
+  --node-count 1 \
+  --nodepool-name nodepool1
+
 # Use Horizontal Pod Autoscaler
 kubectl autoscale deployment user-management -n saferoute --cpu-percent=70 --min=2 --max=10
+
+# Enable cluster autoscaler (if not already enabled)
+az aks update \
+  --resource-group $RESOURCE_GROUP \
+  --name $AKS_CLUSTER_NAME \
+  --enable-cluster-autoscaler \
+  --min-count 1 \
+  --max-count 5
 ```
 
 ### Monitor Costs
 ```bash
-# Check EBS volumes
+# Check Azure Disk volumes
 kubectl get pvc --all-namespaces
 
 # Check LoadBalancers
 kubectl get svc --all-namespaces | grep LoadBalancer
 
-# Review AWS Cost Explorer for detailed breakdown
+# List Azure Disks and their sizes
+az disk list --resource-group $RESOURCE_GROUP --query "[].{Name:name,Size:diskSizeGb,Type:sku.name}" -o table
+
+# Review Azure Cost Management for detailed breakdown
+# Visit: https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/overview
 ```
 
 ---
@@ -712,8 +566,10 @@ kubectl get svc --all-namespaces | grep LoadBalancer
 ## Additional Resources
 
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [EKS Best Practices](https://aws.github.io/aws-eks-best-practices/)
-- [Minikube Documentation](https://minikube.sigs.k8s.io/docs/)
+- [Azure Kubernetes Service (AKS) Documentation](https://docs.microsoft.com/azure/aks/)
+- [AKS Best Practices](https://docs.microsoft.com/azure/aks/best-practices)
+- [Azure Disk CSI Driver](https://github.com/kubernetes-sigs/azuredisk-csi-driver)
+- [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
 - [kubectl Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
 
 ---

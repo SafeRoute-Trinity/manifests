@@ -4,15 +4,12 @@ metadata:
   name: saferoute-ingress
   namespace: saferoute
   annotations:
-    # For Minikube
+    # NGINX Ingress Controller for AKS
     kubernetes.io/ingress.class: nginx
     # TODO: Uncomment and configure for production with SSL
     # cert-manager.io/cluster-issuer: letsencrypt-prod
     # nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/rate-limit: "100"
-    # TODO: For EKS, use ALB instead
-    # alb.ingress.kubernetes.io/scheme: internet-facing
-    # alb.ingress.kubernetes.io/target-type: ip
 spec:
   # TODO: Uncomment and configure your domain for production
   # tls:

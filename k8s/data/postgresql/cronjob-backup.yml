@@ -30,32 +30,50 @@ spec:
                 --compress=9 \
                 | gzip > $BACKUP_FILE
               
-              # TODO: Uncomment and configure for EKS with S3
-              # aws s3 cp $BACKUP_FILE s3://YOUR-BUCKET-NAME/postgresql/
+              # TODO: Uncomment and configure for Azure Blob Storage
+              # az storage blob upload \
+              #   --account-name $AZURE_STORAGE_ACCOUNT \
+              #   --account-key $AZURE_STORAGE_KEY \
+              #   --container-name $AZURE_STORAGE_CONTAINER \
+              #   --name postgresql/$(basename $BACKUP_FILE) \
+              #   --file $BACKUP_FILE
               
               echo "Backup complete: $BACKUP_FILE"
             env:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: postgresql-credentials
+                  name: postgresql-secret
                   key: username
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: postgresql-credentials
+                  name: postgresql-secret
                   key: password
             - name: POSTGRES_DB
               value: saferoute
-            # TODO: Uncomment for EKS
-            # - name: AWS_DEFAULT_REGION
-            #   value: us-east-1
+            # TODO: Uncomment for Azure Blob Storage backups
+            # - name: AZURE_STORAGE_ACCOUNT
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: azure-storage-credentials
+            #       key: account-name
+            # - name: AZURE_STORAGE_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: azure-storage-credentials
+            #       key: account-key
+            # - name: AZURE_STORAGE_CONTAINER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: azure-storage-credentials
+            #       key: container-name
             volumeMounts:
             - name: backup
               mountPath: /backup
           volumes:
           - name: backup
             emptyDir: {}
-          # TODO: Uncomment for EKS with S3 backups
+          # TODO: Uncomment if using Azure Blob Storage with managed identity
           # serviceAccountName: postgresql-backup-sa
 

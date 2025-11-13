@@ -1,13 +1,14 @@
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: postgresql
   namespace: data
   labels:
     app: postgresql
 spec:
-  serviceName: postgresql
   replicas: 1
+  strategy:
+    type: Recreate  # Required for stateful workloads with persistent volumes
   selector:
     matchLabels:
       app: postgresql
@@ -19,6 +20,7 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9187"
     spec:
+      restartPolicy: Always  # Explicit auto-retry policy
       containers:
       - name: postgresql
         image: postgis/postgis:15-3.4-alpine
@@ -66,7 +68,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 6
+          failureThreshold: 6  # Auto-retry: will restart container after 6 failures
         readinessProbe:
           exec:
             command:
@@ -105,24 +107,31 @@ spec:
           limits:
             memory: "64Mi"
             cpu: "50m"
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9187
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 9187
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
       
       volumes:
+      - name: postgresql-data
+        persistentVolumeClaim:
+          claimName: postgresql-data
       - name: postgresql-config
         configMap:
           name: postgresql-config
       - name: postgresql-initdb
         configMap:
           name: postgresql-initdb
-  
-  volumeClaimTemplates:
-  - metadata:
-      name: postgresql-data
-      labels:
-        app: postgresql
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: managed-premium  # AKS default Premium SSD
-      resources:
-        requests:
-          storage: 50Gi
 
