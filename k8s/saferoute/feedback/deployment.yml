@@ -23,8 +23,7 @@ spec:
     spec:
       containers:
       - name: feedback
-        # TODO: Change to your actual image registry and tag
-        image: your-registry/feedback:latest
+        image: saferoute/feedback:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -42,12 +41,12 @@ spec:
         - name: DATABASE_USER
           valueFrom:
             secretKeyRef:
-              name: postgresql-credentials
+              name: postgresql-secret
               key: username
         - name: DATABASE_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: postgresql-credentials
+              name: postgresql-secret
               key: password
         - name: REDIS_HOST
           value: redis.data.svc.cluster.local
@@ -56,7 +55,7 @@ spec:
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: redis-credentials
+              name: redis-secret
               key: password
         resources:
           requests:

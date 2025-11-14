@@ -34,7 +34,7 @@ spec:
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: redis-credentials
+              name: redis-secret
               key: password
         volumeMounts:
         - name: redis-data

@@ -6,6 +6,6 @@ metadata:
 data:
   database.name: "saferoute"
   # TODO: Change to your Auth0 domain
-  auth0.domain: "your-domain.auth0.com"
+  auth0.domain: "saferoute.eu.auth0.com"
   log.level: "info"
 

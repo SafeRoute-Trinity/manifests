@@ -109,7 +109,7 @@ kubectl create secret generic postgresql-secret \
   -n data
 
 # Create Redis credentials
-kubectl create secret generic redis-credentials \
+kubectl create secret generic redis-secret \
   --from-literal=password=$(openssl rand -base64 32) \
   -n data
 
@@ -328,7 +328,7 @@ kubectl run -it --rm psql-test --image=postgres:15-alpine --restart=Never -n dat
 
 # Test Redis connection
 kubectl run -it --rm redis-test --image=redis:7-alpine --restart=Never -n data -- \
-  redis-cli -h redis.data.svc.cluster.local -a $(kubectl get secret redis-credentials -n data -o jsonpath='{.data.password}' | base64 -d) PING
+  redis-cli -h redis.data.svc.cluster.local -a $(kubectl get secret redis-secret -n data -o jsonpath='{.data.password}' | base64 -d) PING
 ```
 
 ### Scale Services
