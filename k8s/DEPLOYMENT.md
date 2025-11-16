@@ -115,7 +115,7 @@ kubectl create secret generic redis-secret \
 
 # Create Auth0 credentials
 # TODO: Replace with your actual Auth0 credentials
-kubectl create secret generic auth0-credentials \
+kubectl create secret generic auth0-secret \
   --from-literal=client-id=YOUR_AUTH0_CLIENT_ID \
   --from-literal=client-secret=YOUR_AUTH0_CLIENT_SECRET \
   -n saferoute

@@ -7,7 +7,7 @@ metadata:
     app: user-management
     tier: backend
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: user-management
@@ -18,7 +18,7 @@ spec:
         tier: backend
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "20000"
         prometheus.io/path: "/metrics"
     spec:
       containers:
@@ -26,7 +26,7 @@ spec:
         image: saferoute/user-management:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 8080
+        - containerPort: 20000
           name: http
         env:
         - name: DATABASE_HOST
@@ -65,30 +65,28 @@ spec:
         - name: AUTH0_CLIENT_ID
           valueFrom:
             secretKeyRef:
-              name: auth0-credentials
+              name: auth0-secret
               key: client-id
         - name: AUTH0_CLIENT_SECRET
           valueFrom:
             secretKeyRef:
-              name: auth0-credentials
+              name: auth0-secret
               key: client-secret
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
+            memory: "128Mi"
+            cpu: "100m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "200m"
         livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
+          tcpSocket:
+            port: 20000
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
+          tcpSocket:
+            port: 20000
           initialDelaySeconds: 10
           periodSeconds: 5
 

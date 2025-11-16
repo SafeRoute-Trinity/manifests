@@ -7,7 +7,7 @@ metadata:
     app: sos
     tier: backend
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: sos
@@ -18,7 +18,7 @@ spec:
         tier: backend
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "20006"
         prometheus.io/path: "/metrics"
     spec:
       containers:
@@ -26,7 +26,7 @@ spec:
         image: saferoute/sos:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 8080
+        - containerPort: 20006
           name: http
         env:
         - name: DATABASE_HOST
@@ -59,21 +59,21 @@ spec:
               key: password
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
+            memory: "128Mi"
+            cpu: "100m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "200m"
         livenessProbe:
           httpGet:
             path: /health
-            port: 8080
+            port: 20006
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /ready
-            port: 8080
+            path: /health
+            port: 20006
           initialDelaySeconds: 10
           periodSeconds: 5
 
