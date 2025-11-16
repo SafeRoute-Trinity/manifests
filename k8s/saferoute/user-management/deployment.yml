@@ -8,6 +8,7 @@ metadata:
     tier: backend
 spec:
   replicas: 1
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       app: user-management
@@ -18,7 +19,7 @@ spec:
         tier: backend
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "20000"
+        prometheus.io/port: "80"
         prometheus.io/path: "/metrics"
     spec:
       containers:
@@ -26,7 +27,7 @@ spec:
         image: saferoute/user-management:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 20000
+        - containerPort: 80
           name: http
         env:
         - name: DATABASE_HOST
@@ -80,13 +81,15 @@ spec:
             memory: "256Mi"
             cpu: "200m"
         livenessProbe:
-          tcpSocket:
-            port: 20000
+          httpGet:
+            path: /health
+            port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
-          tcpSocket:
-            port: 20000
+          httpGet:
+            path: /health
+            port: 80
           initialDelaySeconds: 10
           periodSeconds: 5
 

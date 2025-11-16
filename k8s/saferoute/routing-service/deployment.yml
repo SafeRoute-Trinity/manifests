@@ -8,6 +8,7 @@ metadata:
     tier: backend
 spec:
   replicas: 1
+  revisionHistoryLimit: 2
   selector:
     matchLabels:
       app: routing-service
@@ -18,7 +19,7 @@ spec:
         tier: backend
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "20002"
+        prometheus.io/port: "80"
         prometheus.io/path: "/metrics"
     spec:
       containers:
@@ -26,7 +27,7 @@ spec:
         image: saferoute/routing-service:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 20002
+        - containerPort: 80
           name: http
         env:
         - name: DATABASE_HOST
@@ -67,13 +68,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 20002
+            port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: 20002
+            port: 80
           initialDelaySeconds: 10
           periodSeconds: 5
 
