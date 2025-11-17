@@ -2,58 +2,195 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: saferoute-ingress
-  namespace: saferoute
+  namespace: default  # Change to your namespace if different
   annotations:
-    # NGINX Ingress Controller for AKS
-    kubernetes.io/ingress.class: nginx
-    # TODO: Uncomment and configure for production with SSL
-    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # For NGINX Ingress Controller (most common)
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # Optional: SSL redirect
     # nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
+    # Optional: CORS (services handle CORS, but can add here too)
+    # nginx.ingress.kubernetes.io/enable-cors: "true"
+    # nginx.ingress.kubernetes.io/cors-allow-origin: "*"
 spec:
-  # TODO: Uncomment and configure your domain for production
+  ingressClassName: nginx  # Change to your ingress class
+  # For AKS with Application Gateway, use:
+  # ingressClassName: azure/application-gateway
+  
+  # Uncomment and configure if using TLS
   # tls:
-  # - hosts:
-  #   - api.saferoute.com
-  #   secretName: saferoute-tls
+  #   - hosts:
+  #       - api.saferoute.com
+  #     secretName: saferoute-tls-secret
+  
   rules:
-  # TODO: Change to your actual domain
-  - host: saferoute.local
-    http:
-      paths:
-      - path: /api/users
-        pathType: Prefix
-        backend:
-          service:
-            name: user-management
-            port:
-              number: 80
-      - path: /api/routing
-        pathType: Prefix
-        backend:
-          service:
-            name: routing-service
-            port:
-              number: 80
-      - path: /api/sos
-        pathType: Prefix
-        backend:
-          service:
-            name: sos
-            port:
-              number: 80
-      - path: /api/safety
-        pathType: Prefix
-        backend:
-          service:
-            name: safety-scoring
-            port:
-              number: 80
-      - path: /api/feedback
-        pathType: Prefix
-        backend:
-          service:
-            name: feedback
-            port:
-              number: 80
-
+    - host: api.saferoute.com  # Change to your domain
+      http:
+        paths:
+          # Health endpoints (direct pass-through)
+          - path: /health/user-management
+            pathType: Prefix
+            backend:
+              service:
+                name: user-management-service
+                port:
+                  number: 80
+          
+          - path: /health/notification
+            pathType: Prefix
+            backend:
+              service:
+                name: notification-service
+                port:
+                  number: 80
+          
+          - path: /health/routing
+            pathType: Prefix
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          - path: /health/safety-scoring
+            pathType: Prefix
+            backend:
+              service:
+                name: safety-scoring-service
+                port:
+                  number: 80
+          
+          - path: /health/feedback
+            pathType: Prefix
+            backend:
+              service:
+                name: feedback-service
+                port:
+                  number: 80
+          
+          - path: /health/sos
+            pathType: Prefix
+            backend:
+              service:
+                name: sos-service
+                port:
+                  number: 80
+          
+          # User Management API - routes /v1/users/* and /v1/auth/*
+          - path: /v1/users(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: user-management-service
+                port:
+                  number: 80
+          
+          - path: /v1/auth(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: user-management-service
+                port:
+                  number: 80
+          
+          # Notification API - routes /v1/notifications/*
+          - path: /v1/notifications(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: notification-service
+                port:
+                  number: 80
+          
+          # Routing API - routes /v1/routes/* and /v1/navigation/*
+          - path: /v1/routes(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          - path: /v1/navigation(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          # Safety Scoring API - routes /v1/safety/*
+          - path: /v1/safety(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: safety-scoring-service
+                port:
+                  number: 80
+          
+          # Feedback API - routes /v1/feedback/*
+          - path: /v1/feedback(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: feedback-service
+                port:
+                  number: 80
+          
+          # SOS/Emergency API - routes /v1/emergency/*
+          - path: /v1/emergency(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: sos-service
+                port:
+                  number: 80
+          
+          # FastAPI Docs (optional - remove in production)
+          - path: /docs/user-management
+            pathType: Prefix
+            backend:
+              service:
+                name: user-management-service
+                port:
+                  number: 80
+          
+          - path: /docs/notification
+            pathType: Prefix
+            backend:
+              service:
+                name: notification-service
+                port:
+                  number: 80
+          
+          - path: /docs/routing
+            pathType: Prefix
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          - path: /docs/safety-scoring
+            pathType: Prefix
+            backend:
+              service:
+                name: safety-scoring-service
+                port:
+                  number: 80
+          
+          - path: /docs/feedback
+            pathType: Prefix
+            backend:
+              service:
+                name: feedback-service
+                port:
+                  number: 80
+          
+          - path: /docs/sos
+            pathType: Prefix
+            backend:
+              service:
+                name: sos-service
+                port:
+                  number: 80
