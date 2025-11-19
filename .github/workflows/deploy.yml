@@ -130,11 +130,8 @@ jobs:
             local svc=$1
             local deployment_file="k8s/saferoute/${svc}/deployment.yml"
             
-            # Get the tag for this service from the previous step
-            local tag_var="${svc}_tag"
-            local tag="${{ steps.get_tags.outputs[tag_var] }}"
-            
-            # Handle the dynamic output reference
+            # Get the tag for this service
+            local tag
             if [ "$svc" == "user-management" ]; then
               tag="${{ steps.get_tags.outputs.user-management_tag }}"
             elif [ "$svc" == "notification-service" ]; then
