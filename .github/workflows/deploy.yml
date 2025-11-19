@@ -1,7 +1,7 @@
 name: Deploy to Kubernetes
 
 on:
-  # Manual trigger with service selection and image tag
+  # Manual trigger with service selection
   workflow_dispatch:
     inputs:
       service:
@@ -16,18 +16,6 @@ on:
           - safety-scoring
           - sos
           - feedback
-      image_tag:
-        description: 'Docker image tag to deploy (e.g., v1.0.0, latest, dev-abc123)'
-        required: true
-        default: 'latest'
-      environment:
-        description: 'Target environment'
-        required: true
-        type: choice
-        default: 'staging'
-        options:
-          - staging
-          - production
 
   # Webhook trigger from CI repositories
   repository_dispatch:
@@ -36,7 +24,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}
     
     steps:
       - name: Checkout manifests
@@ -45,24 +32,70 @@ jobs:
       - name: Set deployment variables
         id: vars
         run: |
-          # Determine service and tag from manual trigger or webhook
+          # Determine service from manual trigger or webhook
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             SERVICE="${{ github.event.inputs.service }}"
-            TAG="${{ github.event.inputs.image_tag }}"
-            ENV="${{ github.event.inputs.environment }}"
           else
             SERVICE="${{ github.event.client_payload.service }}"
-            TAG="${{ github.event.client_payload.image_tag }}"
-            ENV="${{ github.event.client_payload.environment }}"
           fi
           
           echo "service=${SERVICE}" >> $GITHUB_OUTPUT
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "environment=${ENV}" >> $GITHUB_OUTPUT
           
           echo "🚀 Deploying service: ${SERVICE}"
-          echo "🏷️  Image tag: ${TAG}"
-          echo "🌍 Environment: ${ENV}"
+
+      - name: Get latest image tags from Docker Hub
+        id: get_tags
+        run: |
+          SERVICE="${{ steps.vars.outputs.service }}"
+          
+          # Map service names to their image names
+          declare -A IMAGE_MAP=(
+            ["user-management"]="saferoute/user-management"
+            ["notification-service"]="saferoute/notification"
+            ["routing-service"]="saferoute/routing-service"
+            ["safety-scoring"]="saferoute/safety-scoring"
+            ["sos"]="saferoute/sos"
+            ["feedback"]="saferoute/feedback"
+          )
+          
+          get_latest_tag() {
+            local image_name=$1
+            
+            echo "🔍 Fetching latest tag for ${image_name}..."
+            
+            # Get the latest tag from Docker Hub (excluding 'latest' and 'buildcache')
+            # This fetches the most recently pushed tag
+            local latest_tag=$(curl -s "https://hub.docker.com/v2/repositories/${image_name}/tags/?page_size=100" | \
+              jq -r '.results[] | select(.name != "latest" and .name != "buildcache") | .name' | \
+              head -n 1)
+            
+            if [ -z "$latest_tag" ]; then
+              echo "⚠️  No tags found, falling back to 'latest'"
+              latest_tag="latest"
+            fi
+            
+            echo "✅ Latest tag for ${image_name}: ${latest_tag}"
+            echo "$latest_tag"
+          }
+          
+          # Store tags for each service
+          declare -A SERVICE_TAGS
+          
+          if [ "$SERVICE" == "all" ]; then
+            echo "📦 Fetching latest tags for all services..."
+            for svc in "${!IMAGE_MAP[@]}"; do
+              image_name="${IMAGE_MAP[$svc]}"
+              tag=$(get_latest_tag "$image_name")
+              SERVICE_TAGS["$svc"]="$tag"
+              echo "${svc}_tag=${tag}" >> $GITHUB_OUTPUT
+            done
+          else
+            echo "📦 Fetching latest tag for ${SERVICE}..."
+            image_name="${IMAGE_MAP[$SERVICE]}"
+            tag=$(get_latest_tag "$image_name")
+            SERVICE_TAGS["$SERVICE"]="$tag"
+            echo "${SERVICE}_tag=${tag}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
@@ -82,7 +115,6 @@ jobs:
       - name: Update image tags in manifests
         run: |
           SERVICE="${{ steps.vars.outputs.service }}"
-          TAG="${{ steps.vars.outputs.tag }}"
           
           # Map service names to their image names
           declare -A IMAGE_MAP=(
@@ -98,14 +130,33 @@ jobs:
             local svc=$1
             local deployment_file="k8s/saferoute/${svc}/deployment.yml"
             
+            # Get the tag for this service from the previous step
+            local tag_var="${svc}_tag"
+            local tag="${{ steps.get_tags.outputs[tag_var] }}"
+            
+            # Handle the dynamic output reference
+            if [ "$svc" == "user-management" ]; then
+              tag="${{ steps.get_tags.outputs.user-management_tag }}"
+            elif [ "$svc" == "notification-service" ]; then
+              tag="${{ steps.get_tags.outputs.notification-service_tag }}"
+            elif [ "$svc" == "routing-service" ]; then
+              tag="${{ steps.get_tags.outputs.routing-service_tag }}"
+            elif [ "$svc" == "safety-scoring" ]; then
+              tag="${{ steps.get_tags.outputs.safety-scoring_tag }}"
+            elif [ "$svc" == "sos" ]; then
+              tag="${{ steps.get_tags.outputs.sos_tag }}"
+            elif [ "$svc" == "feedback" ]; then
+              tag="${{ steps.get_tags.outputs.feedback_tag }}"
+            fi
+            
             if [ -f "$deployment_file" ]; then
               local image_name="${IMAGE_MAP[$svc]}"
-              echo "📝 Updating ${deployment_file} with ${image_name}:${TAG}"
+              echo "📝 Updating ${deployment_file} with ${image_name}:${tag}"
               
               # Update image tag in deployment file
-              sed -i "s|image: ${image_name}:.*|image: ${image_name}:${TAG}|g" "$deployment_file"
+              sed -i "s|image: ${image_name}:.*|image: ${image_name}:${tag}|g" "$deployment_file"
               
-              echo "✅ Updated ${svc}"
+              echo "✅ Updated ${svc} to ${tag}"
             else
               echo "⚠️  Warning: ${deployment_file} not found"
             fi
@@ -124,7 +175,6 @@ jobs:
       - name: Verify Docker images exist
         run: |
           SERVICE="${{ steps.vars.outputs.service }}"
-          TAG="${{ steps.vars.outputs.tag }}"
           
           # Map service names to their image names
           declare -A IMAGE_MAP=(
@@ -139,13 +189,30 @@ jobs:
           verify_image() {
             local svc=$1
             local image_name="${IMAGE_MAP[$svc]}"
-            local full_image="${image_name}:${TAG}"
+            
+            # Get the tag for this service
+            local tag
+            if [ "$svc" == "user-management" ]; then
+              tag="${{ steps.get_tags.outputs.user-management_tag }}"
+            elif [ "$svc" == "notification-service" ]; then
+              tag="${{ steps.get_tags.outputs.notification-service_tag }}"
+            elif [ "$svc" == "routing-service" ]; then
+              tag="${{ steps.get_tags.outputs.routing-service_tag }}"
+            elif [ "$svc" == "safety-scoring" ]; then
+              tag="${{ steps.get_tags.outputs.safety-scoring_tag }}"
+            elif [ "$svc" == "sos" ]; then
+              tag="${{ steps.get_tags.outputs.sos_tag }}"
+            elif [ "$svc" == "feedback" ]; then
+              tag="${{ steps.get_tags.outputs.feedback_tag }}"
+            fi
+            
+            local full_image="${image_name}:${tag}"
             
             echo "🔍 Verifying ${full_image} exists on Docker Hub..."
             
             # Check if image exists (this will pull the manifest, not the full image)
             if docker manifest inspect "${full_image}" > /dev/null 2>&1; then
-              echo "✅ Image ${full_image} exists"
+              echo "✅ Image ${full_image} verified"
             else
               echo "❌ Error: Image ${full_image} not found on Docker Hub"
               exit 1
@@ -244,7 +311,6 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          TAG="${{ steps.vars.outputs.tag }}"
           SERVICE="${{ steps.vars.outputs.service }}"
           
           git add k8s/saferoute/*/deployment.yml
@@ -252,18 +318,49 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Deploy ${SERVICE} with tag ${TAG}"
+            git commit -m "Deploy ${SERVICE} with latest Docker Hub images"
             git push
           fi
 
       - name: Deployment summary
         if: always()
         run: |
+          SERVICE="${{ steps.vars.outputs.service }}"
+          
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Service**: ${{ steps.vars.outputs.service }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Tag**: ${{ steps.vars.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ steps.vars.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${SERVICE}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$SERVICE" == "all" ]; then
+            echo "### 📦 Deployed Images" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Service | Image Tag |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-----------|" >> $GITHUB_STEP_SUMMARY
+            echo "| user-management | \`${{ steps.get_tags.outputs.user-management_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| notification-service | \`${{ steps.get_tags.outputs.notification-service_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| routing-service | \`${{ steps.get_tags.outputs.routing-service_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| safety-scoring | \`${{ steps.get_tags.outputs.safety-scoring_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| sos | \`${{ steps.get_tags.outputs.sos_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| feedback | \`${{ steps.get_tags.outputs.feedback_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            if [ "$SERVICE" == "user-management" ]; then
+              TAG="${{ steps.get_tags.outputs.user-management_tag }}"
+            elif [ "$SERVICE" == "notification-service" ]; then
+              TAG="${{ steps.get_tags.outputs.notification-service_tag }}"
+            elif [ "$SERVICE" == "routing-service" ]; then
+              TAG="${{ steps.get_tags.outputs.routing-service_tag }}"
+            elif [ "$SERVICE" == "safety-scoring" ]; then
+              TAG="${{ steps.get_tags.outputs.safety-scoring_tag }}"
+            elif [ "$SERVICE" == "sos" ]; then
+              TAG="${{ steps.get_tags.outputs.sos_tag }}"
+            elif [ "$SERVICE" == "feedback" ]; then
+              TAG="${{ steps.get_tags.outputs.feedback_tag }}"
+            fi
+            echo "- **Image Tag**: \`${TAG}\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
