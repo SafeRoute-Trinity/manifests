@@ -18,7 +18,7 @@ spec:
         app: postgis
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9187"
+        prometheus.io/port: "31042"     # from 9187 to 31042
     spec:
       restartPolicy: Always
       containers:
