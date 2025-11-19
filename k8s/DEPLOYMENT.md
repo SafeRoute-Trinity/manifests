@@ -1,615 +1,313 @@
 # SafeRoute Kubernetes Deployment Guide
 
-This guide provides step-by-step instructions to deploy SafeRoute microservices on **Azure Kubernetes Service (AKS)**.
+Complete guide for deploying SafeRoute via GitHub Actions.
 
-## Table of Contents
-- [Prerequisites](#prerequisites)
-- [Azure AKS Deployment](#azure-aks-deployment)
-- [Post-Deployment Steps](#post-deployment-steps)
-- [Verification & Testing](#verification--testing)
-- [Troubleshooting](#troubleshooting)
+## Architecture Overview
 
----
+SafeRoute consists of:
 
-## Prerequisites
+### Microservices
+- **user-management**: User authentication and profile management
+- **notification-service**: Push notifications and alerts
+- **routing-service**: Route calculation and optimization
+- **safety-scoring**: Safety metrics and scoring algorithms
+- **sos**: Emergency SOS handling
+- **feedback**: User feedback collection
 
-Before deploying, ensure you have:
-- Azure CLI installed and configured (`az login`)
-- `kubectl` installed
-- `helm` installed (for some optional components)
-- An Azure subscription with appropriate permissions
-- Azure Container Registry (ACR) access (if using private images)
+### Infrastructure
+- **PostgreSQL**: Primary database (StatefulSet)
+- **Redis**: Caching and session storage (StatefulSet)
+- **RabbitMQ**: Message queue for async processing (StatefulSet)
+- **Prometheus**: Metrics collection and monitoring
+- **Grafana**: Metrics visualization
 
----
+## Deployment via GitHub Actions
 
-## Azure AKS Deployment
+All deployments are handled through GitHub Actions workflows.
 
-### Step 1: Create AKS Cluster
+### Manual Deployment
+
+1. Go to the **Actions** tab in GitHub
+2. Select **Deploy to Kubernetes** workflow
+3. Click **Run workflow**
+4. Fill in parameters:
+   - **Service**: Choose specific service or "all"
+   - **Image Tag**: Docker image tag (e.g., `v1.0.0`, `latest`)
+   - **Environment**: `staging` or `production`
+5. Click **Run workflow**
+
+### Automated Deployment (Webhook)
+
+Service repositories can trigger deployments via API:
+
 ```bash
-# Set variables (adjust as needed)
-RESOURCE_GROUP="saferoute-rg"
-AKS_CLUSTER_NAME="saferoute-aks"
-LOCATION="eastus"
-NODE_COUNT=3
-NODE_VM_SIZE="Standard_D2s_v3"
-
-# Create resource group
-az group create --name $RESOURCE_GROUP --location $LOCATION
-
-# Create AKS cluster (takes 10-15 minutes)
-az aks create \
-  --resource-group $RESOURCE_GROUP \
-  --name $AKS_CLUSTER_NAME \
-  --node-count $NODE_COUNT \
-  --node-vm-size $NODE_VM_SIZE \
-  --enable-managed-identity \
-  --enable-azure-rbac \
-  --enable-addons monitoring \
-  --generate-ssh-keys
-
-# Get AKS credentials
-az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_CLUSTER_NAME
-
-# Verify cluster is accessible
-kubectl get nodes
+curl -X POST \
+  -H "Accept: application/vnd.github.v3+json" \
+  -H "Authorization: token ${GITHUB_TOKEN}" \
+  https://api.github.com/repos/YOUR_ORG/saferoute-manifest/dispatches \
+  -d '{
+    "event_type": "deploy-service",
+    "client_payload": {
+      "service": "user-management",
+      "image_tag": "v1.2.3",
+      "environment": "production"
+    }
+  }'
 ```
 
-### Step 2: Install NGINX Ingress Controller (Optional but Recommended)
+## Docker Images
+
+All services use images from Docker Hub:
+
+| Service | Docker Hub Repository | Default Tag |
+|---------|----------------------|-------------|
+| user-management | saferoute/user-management | latest |
+| notification-service | saferoute/notification | latest |
+| routing-service | saferoute/routing-service | latest |
+| safety-scoring | saferoute/safety-scoring | latest |
+| sos | saferoute/sos | latest |
+| feedback | saferoute/feedback | latest |
+
+Images are built in their service repositories and pushed to Docker Hub.
+
+## Configuration
+
+### Required Secrets
+
+Create these Kubernetes secrets before deploying:
+
+#### PostgreSQL Secret
 ```bash
-# Add NGINX Ingress Helm repository
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
-
-# Install NGINX Ingress Controller
-helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx \
-  --create-namespace \
-  --set controller.service.type=LoadBalancer \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
-
-# Wait for LoadBalancer IP to be assigned
-kubectl get service ingress-nginx-controller -n ingress-nginx -w
-
-# Get the external IP
-kubectl get service ingress-nginx-controller -n ingress-nginx
-```
-
-### Step 3: Verify Storage Classes (Optional)
-```bash
-# AKS comes with default storage classes pre-configured
-# Check available storage classes
-kubectl get storageclass
-
-# AKS typically provides:
-# - managed-premium: Premium SSD (Premium_LRS) - recommended for databases
-# - default or managed-csi: Standard SSD (Standard_LRS)
-
-# Note: If you need custom settings (ReadOnly caching, Retain policy, etc.),
-# you can create a custom storage class using base/storageclass.yml
-```
-
-### Step 4: Create Namespaces
-```bash
-# Navigate to the k8s directory
-cd saferoute/k8s
-
-# Create all namespaces
-kubectl apply -f namespaces/namespaces.yml
-
-# Verify namespaces are created
-kubectl get namespaces
-```
-
-### Step 5: Create Secrets
-```bash
-# Create PostgreSQL credentials (note: secret name must match deployment references)
 kubectl create secret generic postgresql-secret \
-  --from-literal=username=saferoute_user \
-  --from-literal=password=$(openssl rand -base64 32) \
+  --from-literal=username=postgres \
+  --from-literal=password=YOUR_PASSWORD \
   -n data
+```
 
-# Create Redis credentials
+#### Redis Secret
+```bash
 kubectl create secret generic redis-secret \
-  --from-literal=password=$(openssl rand -base64 32) \
+  --from-literal=password=YOUR_REDIS_PASSWORD \
   -n data
+```
 
-# Create Auth0 credentials
-# TODO: Replace with your actual Auth0 credentials
+#### RabbitMQ Secret
+```bash
+kubectl create secret generic rabbitmq-secret \
+  --from-literal=username=admin \
+  --from-literal=password=YOUR_RABBITMQ_PASSWORD \
+  --from-literal=erlang-cookie=YOUR_ERLANG_COOKIE \
+  -n saferoute
+```
+
+#### Auth0 Secret (for user-management)
+```bash
 kubectl create secret generic auth0-secret \
   --from-literal=client-id=YOUR_AUTH0_CLIENT_ID \
   --from-literal=client-secret=YOUR_AUTH0_CLIENT_SECRET \
   -n saferoute
-
-# Verify secrets are created
-kubectl get secrets -n data
-kubectl get secrets -n saferoute
 ```
 
-### Step 6: Deploy Data Layer (PostgreSQL & Redis)
+### ConfigMaps
+
+Each service has its own ConfigMap:
+- `k8s/saferoute/*/configmap.yml`
+
+Review and update before deployment.
+
+## Monitoring Deployments
+
+### Check Status via kubectl
+
 ```bash
-# Deploy PostgreSQL ConfigMaps
-kubectl apply -f data/postgresql/configmap.yml
-
-# Deploy PostgreSQL PVC (for Deployment)
-kubectl apply -f data/postgresql/pvc.yml
-
-# Deploy PostgreSQL Deployment and Service
-kubectl apply -f data/postgresql/deployment.yml
-kubectl apply -f data/postgresql/service.yml
-
-# Wait for PostgreSQL to be ready (may take 3-5 minutes for Azure Disk provisioning)
-kubectl wait --for=condition=ready pod -l app=postgresql -n data --timeout=600s
-
-# Deploy Redis PVC (for Deployment)
-kubectl apply -f data/redis/pvc.yml
-
-# Deploy Redis Deployment and Service
-kubectl apply -f data/redis/deployment.yml
-kubectl apply -f data/redis/service.yml
-
-# Wait for Redis to be ready
-kubectl wait --for=condition=ready pod -l app=redis -n data --timeout=300s
-
-# Verify data layer is running
-kubectl get pods -n data
-kubectl get pvc -n data
-```
-
-### Step 7: Deploy RabbitMQ (SafeRoute Namespace)
-```bash
-# NOTE: Apply the RabbitMQ credentials secret beforehand
-# kubectl create secret generic rabbitmq-secret \
-#   --from-literal=username=<username> \
-#   --from-literal=password=<password> \
-#   --from-literal=erlangCookie=<cookie> \
-#   -n saferoute
-
-# Deploy RabbitMQ StatefulSet and Services
-kubectl apply -f saferoute/rabbitmq/statefulset.yml
-kubectl apply -f saferoute/rabbitmq/service.yml
-
-# Wait for RabbitMQ pod
-kubectl wait --for=condition=ready pod -l app=rabbitmq -n saferoute --timeout=300s
-
-# Verify resources
-kubectl get pods -n saferoute -l app=rabbitmq
-kubectl get svc rabbitmq -n saferoute
-
-# (Optional) Port-forward the management UI
-# kubectl port-forward -n saferoute svc/rabbitmq 15672:15672
-# open http://localhost:15672 with the secret credentials
-```
-
-All services inside the cluster can reach RabbitMQ via:
-
-```
-amqp://<username>:<password>@rabbitmq.saferoute.svc.cluster.local:5672/
-```
-
-### Step 8: Deploy SafeRoute Application Services
-```bash
-# Deploy ConfigMaps for all services
-kubectl apply -f saferoute/user-management/configmap.yml
-kubectl apply -f saferoute/routing-service/configmap.yml
-kubectl apply -f saferoute/sos/configmap.yml
-kubectl apply -f saferoute/safety-scoring/configmap.yml
-kubectl apply -f saferoute/feedback/configmap.yml
-
-# Deploy User Management Service
-kubectl apply -f saferoute/user-management/deployment.yml
-kubectl apply -f saferoute/user-management/service.yml
-
-# Deploy Routing Service
-kubectl apply -f saferoute/routing-service/deployment.yml
-kubectl apply -f saferoute/routing-service/service.yml
-
-# Deploy SOS Service
-kubectl apply -f saferoute/sos/deployment.yml
-kubectl apply -f saferoute/sos/service.yml
-
-# Deploy Safety Scoring Service
-kubectl apply -f saferoute/safety-scoring/deployment.yml
-kubectl apply -f saferoute/safety-scoring/service.yml
-
-# Deploy Feedback Service
-kubectl apply -f saferoute/feedback/deployment.yml
-kubectl apply -f saferoute/feedback/service.yml
-
-# Wait for all services to be ready
-kubectl wait --for=condition=ready pod -l tier=backend -n saferoute --timeout=300s
-
-# Verify all services are running
+# Get all pods
 kubectl get pods -n saferoute
+
+# Get all services
 kubectl get services -n saferoute
-```
 
-### Step 9: Deploy Ingress
-```bash
-# Deploy Ingress resource
-kubectl apply -f saferoute/ingress.yml
+# Check specific deployment
+kubectl describe deployment user-management -n saferoute
 
-# Wait for Ingress to be ready (1-2 minutes)
-kubectl get ingress -n saferoute -w
-
-# Get the external IP from NGINX Ingress Controller
-INGRESS_IP=$(kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-# Get the hostname from Ingress
-INGRESS_HOST=$(kubectl get ingress saferoute-ingress -n saferoute -o jsonpath='{.spec.rules[0].host}')
-
-echo "Ingress IP: $INGRESS_IP"
-echo "Ingress Host: $INGRESS_HOST"
-
-# TODO: Configure your DNS to point to the LoadBalancer IP
-# Example: Create an A record in your DNS provider
-# saferoute.yourdomain.com -> $INGRESS_IP
-
-# Test Ingress (replace with your actual domain or use the IP)
-curl -H "Host: saferoute.local" http://$INGRESS_IP/api/users/health
-```
-
-### Step 10: Deploy Network Policies
-```bash
-# Apply network policies for security
-kubectl apply -f base/networkpolicies.yml
-
-# Verify network policies
-kubectl get networkpolicies -n data
-kubectl get networkpolicies -n saferoute
-```
-
-### Step 11: Deploy Monitoring Stack (Optional)
-```bash
-# Create RBAC for Prometheus
-kubectl apply -f monitoring/prometheus/rbac.yml
-
-# Deploy Prometheus ConfigMap
-kubectl apply -f monitoring/prometheus/configmap.yml
-
-# Deploy Prometheus
-kubectl apply -f monitoring/prometheus/deployment.yml
-kubectl apply -f monitoring/prometheus/service.yml
-
-# Deploy Grafana
-kubectl apply -f monitoring/grafana/deployment.yml
-kubectl apply -f monitoring/grafana/service.yml
-
-# Wait for monitoring stack to be ready
-kubectl wait --for=condition=ready pod -l app=prometheus -n monitoring --timeout=300s
-kubectl wait --for=condition=ready pod -l app=grafana -n monitoring --timeout=300s
-
-# Access Prometheus via port-forward
-kubectl port-forward -n monitoring svc/prometheus 9090:9090 &
-
-# Access Grafana via port-forward (default: admin/admin)
-kubectl port-forward -n monitoring svc/grafana 3000:3000 &
-
-# Open in browser: http://localhost:3000
-
-# Verify monitoring is scraping metrics
-kubectl get pods -n monitoring
-```
-
-### Step 12: Setup Azure Blob Storage Backup for PostgreSQL (Optional)
-```bash
-# Set variables
-STORAGE_ACCOUNT_NAME="saferoutebackups$(openssl rand -hex 4)"
-CONTAINER_NAME="postgresql-backups"
-RESOURCE_GROUP="saferoute-rg"
-LOCATION="eastus"
-
-# Create storage account
-az storage account create \
-  --name $STORAGE_ACCOUNT_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --location $LOCATION \
-  --sku Standard_LRS
-
-# Create container
-az storage container create \
-  --name $CONTAINER_NAME \
-  --account-name $STORAGE_ACCOUNT_NAME \
-  --auth-mode login
-
-# Get storage account key
-STORAGE_KEY=$(az storage account keys list \
-  --resource-group $RESOURCE_GROUP \
-  --account-name $STORAGE_ACCOUNT_NAME \
-  --query "[0].value" -o tsv)
-
-# Create Kubernetes secret for storage account
-kubectl create secret generic azure-storage-credentials \
-  --from-literal=account-name=$STORAGE_ACCOUNT_NAME \
-  --from-literal=account-key=$STORAGE_KEY \
-  --from-literal=container-name=$CONTAINER_NAME \
-  -n data
-
-# Update cronjob-backup.yml to use Azure Blob Storage
-# TODO: Modify data/postgresql/cronjob-backup.yml to use Azure CLI or azcopy
-
-# Deploy PostgreSQL backup CronJob
-kubectl apply -f data/postgresql/cronjob-backup.yml
-
-# Verify CronJob is created
-kubectl get cronjobs -n data
-```
-
----
-
-## Post-Deployment Steps
-
-### Configure Grafana Dashboards
-```bash
-# Port-forward Grafana
-kubectl port-forward -n monitoring svc/grafana 3000:3000
-
-# Open browser: http://localhost:3000
-# Login: admin/admin
-# Add Prometheus data source:
-# - URL: http://prometheus.monitoring.svc.cluster.local:9090
-# - Save & Test
-# Import dashboard ID: 6417 (Kubernetes Cluster Monitoring)
-```
-
-### Test Database Connectivity
-```bash
-# Test PostgreSQL connection
-kubectl run -it --rm psql-test --image=postgres:15-alpine --restart=Never -n data -- \
-  psql -h postgresql.data.svc.cluster.local -U saferoute_user -d saferoute -c "SELECT version();"
-
-# Test Redis connection
-kubectl run -it --rm redis-test --image=redis:7-alpine --restart=Never -n data -- \
-  redis-cli -h redis.data.svc.cluster.local -a $(kubectl get secret redis-secret -n data -o jsonpath='{.data.password}' | base64 -d) PING
-```
-
-### Scale Services
-```bash
-# Scale up user-management service
-kubectl scale deployment user-management -n saferoute --replicas=5
-
-# Scale down for cost savings
-kubectl scale deployment feedback -n saferoute --replicas=1
-
-# Check status
-kubectl get deployments -n saferoute
-```
-
----
-
-## Verification & Testing
-
-### Check All Pods
-```bash
-# Check all pods across namespaces
-kubectl get pods --all-namespaces
-
-# Check specific namespace
-kubectl get pods -n saferoute
-kubectl get pods -n data
-kubectl get pods -n monitoring
-```
-
-### Check Services
-```bash
-# Check all services
-kubectl get services --all-namespaces
-
-# Test service connectivity from within cluster
-kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  curl http://user-management.saferoute.svc.cluster.local/health
-```
-
-### Check Logs
-```bash
-# View logs for a specific pod
-kubectl logs -f <pod-name> -n saferoute
-
-# View logs for all pods in a deployment
+# View logs
 kubectl logs -f deployment/user-management -n saferoute
 
-# View PostgreSQL logs
-kubectl logs -f postgresql-0 -n data -c postgresql
+# Check rollout status
+kubectl rollout status deployment/user-management -n saferoute
 ```
 
-### Check Resource Usage
+### Check in GitHub Actions
+
+1. Go to Actions tab
+2. Click on deployment workflow run
+3. Review deployment summary
+4. Check step-by-step logs
+
+## Rollback
+
+### Via GitHub Actions
+
+1. Go to Actions → Deploy to Kubernetes
+2. Enter previous stable tag
+3. Run workflow with same service and environment
+
+### Via kubectl (Emergency)
+
 ```bash
-# Check node resources
-kubectl top nodes
+# View rollout history
+kubectl rollout history deployment/user-management -n saferoute
 
-# Check pod resources
-kubectl top pods -n saferoute
-kubectl top pods -n data
+# Rollback to previous version
+kubectl rollout undo deployment/user-management -n saferoute
+
+# Rollback to specific revision
+kubectl rollout undo deployment/user-management --to-revision=2 -n saferoute
 ```
 
-### Test API Endpoints
+## Namespaces
+
+- `saferoute`: Application microservices
+- `data`: PostgreSQL and Redis
+- `monitoring`: Prometheus and Grafana
+
+## Ingress Configuration
+
+Configure routing in `k8s/saferoute/ingress.yml`:
+- `/api/users/*` → user-management
+- `/api/routes/*` → routing-service
+- `/api/safety/*` → safety-scoring
+- `/api/sos/*` → sos
+- `/api/feedback/*` → feedback
+- `/api/notifications/*` → notification-service
+
+## Scaling
+
+### Horizontal Pod Autoscaling
+
 ```bash
-# Get the Ingress IP
-INGRESS_IP=$(kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-INGRESS_HOST=$(kubectl get ingress saferoute-ingress -n saferoute -o jsonpath='{.spec.rules[0].host}')
-
-# Test endpoints (using Host header or actual domain)
-curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/users/health
-curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/routing/health
-curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/sos/health
-curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/safety/health
-curl -H "Host: $INGRESS_HOST" http://$INGRESS_IP/api/feedback/health
-
-# Or if DNS is configured:
-# curl https://saferoute.yourdomain.com/api/users/health
+kubectl autoscale deployment user-management \
+  --cpu-percent=70 \
+  --min=1 \
+  --max=10 \
+  -n saferoute
 ```
 
----
+### Manual Scaling
+
+```bash
+kubectl scale deployment user-management --replicas=3 -n saferoute
+```
 
 ## Troubleshooting
 
+### Deployment Failed in GitHub Actions
+
+1. Check workflow logs in Actions tab
+2. Common issues:
+   - Image not found on Docker Hub
+   - KUBECONFIG secret incorrect
+   - Timeout waiting for pods
+
 ### Pod Not Starting
+
 ```bash
-# Describe pod to see events
+# Check pod status
 kubectl describe pod <pod-name> -n saferoute
 
 # Check logs
 kubectl logs <pod-name> -n saferoute
 
-# Check previous logs if pod restarted
-kubectl logs <pod-name> -n saferoute --previous
+# Check events
+kubectl get events -n saferoute --sort-by='.lastTimestamp'
+```
+
+### Image Pull Errors
+
+```bash
+# Verify image exists
+docker manifest inspect saferoute/user-management:v1.0.0
+
+# Check deployment image
+kubectl get deployment user-management -n saferoute -o yaml | grep image:
 ```
 
 ### Database Connection Issues
+
 ```bash
-# Check PostgreSQL is running
-kubectl get pods -n data -l app=postgresql
+# Check database pods
+kubectl get pods -n data
 
-# Check service endpoints
-kubectl get endpoints -n data
+# Check PostgreSQL logs
+kubectl logs postgresql-0 -n data
 
-# Test connection from a pod
-kubectl run -it --rm debug --image=postgres:15-alpine --restart=Never -n data -- \
-  psql -h postgresql.data.svc.cluster.local -U saferoute_user -d saferoute
+# Test connection from pod
+kubectl exec -it <pod-name> -n saferoute -- \
+  nc -zv postgresql.data.svc.cluster.local 5432
 ```
 
-### Azure Disk Volume Issues
-```bash
-# Check PVC status
-kubectl get pvc -n data
+## CI/CD Integration
 
-# Describe PVC for events
-kubectl describe pvc postgresql-data -n data
-kubectl describe pvc redis-data -n data
+### Workflow in Service Repositories
 
-# Check StorageClass
-kubectl get storageclass
+Add to your service CI workflow:
 
-# Check Azure Disk CSI Driver (should be running by default in AKS)
-kubectl get pods -n kube-system | grep csi-azuredisk
-
-# Check Azure Disk CSI Driver logs if issues
-kubectl logs -n kube-system -l app=csi-azuredisk-controller
-
-# List Azure Disks in resource group
-az disk list --resource-group $RESOURCE_GROUP --query "[].{Name:name,Size:diskSizeGb,State:diskState}" -o table
+```yaml
+- name: Trigger deployment
+  run: |
+    curl -X POST \
+      -H "Accept: application/vnd.github.v3+json" \
+      -H "Authorization: token ${{ secrets.MANIFEST_REPO_TOKEN }}" \
+      https://api.github.com/repos/YOUR_ORG/saferoute-manifest/dispatches \
+      -d '{
+        "event_type": "deploy-service",
+        "client_payload": {
+          "service": "user-management",
+          "image_tag": "${{ github.sha }}",
+          "environment": "staging"
+        }
+      }'
 ```
 
-### Ingress Not Working
+See `.github/workflow-examples/service-ci-example.yml` for complete example.
+
+## GitHub Secrets Required
+
+Configure in repository settings:
+
+- `KUBECONFIG`: Base64-encoded kubeconfig file
+  ```bash
+  cat ~/.kube/config | base64
+  ```
+
+## Best Practices
+
+1. **Use specific image tags** in production (avoid `latest`)
+2. **Test in staging first** before deploying to production
+3. **Monitor deployments** through GitHub Actions
+4. **Keep secrets secure** and rotate regularly
+5. **Review resource limits** and adjust based on usage
+6. **Enable HPA** for services with variable load
+7. **Backup databases** regularly
+
+## Monitoring
+
+### Prometheus
+
 ```bash
-# Check Ingress status
-kubectl get ingress -n saferoute
-
-# Describe Ingress for events
-kubectl describe ingress saferoute-ingress -n saferoute
-
-# Check NGINX Ingress Controller
-kubectl get pods -n ingress-nginx
-kubectl get service ingress-nginx-controller -n ingress-nginx
-
-# Check NGINX Ingress Controller logs
-kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller
-
-# Verify LoadBalancer has external IP
-kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+kubectl port-forward svc/prometheus 9090:9090 -n monitoring
+# Open: http://localhost:9090
 ```
 
-### Network Policy Issues
+### Grafana
+
 ```bash
-# Temporarily disable network policies for testing
-kubectl delete networkpolicy --all -n data
-kubectl delete networkpolicy --all -n saferoute
-
-# Re-apply after testing
-kubectl apply -f base/networkpolicies.yml
+kubectl port-forward svc/grafana 3000:3000 -n monitoring
+# Open: http://localhost:3000
 ```
-
-### Clean Up Everything
-```bash
-# CAUTION: This deletes everything!
-
-# Delete all resources first
-kubectl delete namespace saferoute
-kubectl delete namespace data
-kubectl delete namespace monitoring
-kubectl delete namespace ingress-nginx
-
-# Delete AKS cluster and resource group
-az aks delete --resource-group $RESOURCE_GROUP --name $AKS_CLUSTER_NAME --yes
-
-# Delete resource group (this will delete all resources including storage accounts)
-az group delete --name $RESOURCE_GROUP --yes --no-wait
-```
-
----
-
-## Cost Optimization Tips
-
-### AKS Cost Savings
-```bash
-# Use Spot node pools for non-critical workloads
-az aks nodepool add \
-  --resource-group $RESOURCE_GROUP \
-  --cluster-name $AKS_CLUSTER_NAME \
-  --name spotpool \
-  --node-count 2 \
-  --node-vm-size Standard_D2s_v3 \
-  --priority Spot \
-  --eviction-policy Delete \
-  --spot-max-price -1 \
-  --enable-cluster-autoscaler \
-  --min-count 1 \
-  --max-count 5
-
-# Scale down during off-hours
-kubectl scale deployment --all --replicas=1 -n saferoute
-
-# Scale down node pool
-az aks scale \
-  --resource-group $RESOURCE_GROUP \
-  --name $AKS_CLUSTER_NAME \
-  --node-count 1 \
-  --nodepool-name nodepool1
-
-# Use Horizontal Pod Autoscaler
-kubectl autoscale deployment user-management -n saferoute --cpu-percent=70 --min=2 --max=10
-
-# Enable cluster autoscaler (if not already enabled)
-az aks update \
-  --resource-group $RESOURCE_GROUP \
-  --name $AKS_CLUSTER_NAME \
-  --enable-cluster-autoscaler \
-  --min-count 1 \
-  --max-count 5
-```
-
-### Monitor Costs
-```bash
-# Check Azure Disk volumes
-kubectl get pvc --all-namespaces
-
-# Check LoadBalancers
-kubectl get svc --all-namespaces | grep LoadBalancer
-
-# List Azure Disks and their sizes
-az disk list --resource-group $RESOURCE_GROUP --query "[].{Name:name,Size:diskSizeGb,Type:sku.name}" -o table
-
-# Review Azure Cost Management for detailed breakdown
-# Visit: https://portal.azure.com/#view/Microsoft_Azure_CostManagement/Menu/~/overview
-```
-
----
-
-## Additional Resources
-
-- [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [Azure Kubernetes Service (AKS) Documentation](https://docs.microsoft.com/azure/aks/)
-- [AKS Best Practices](https://docs.microsoft.com/azure/aks/best-practices)
-- [Azure Disk CSI Driver](https://github.com/kubernetes-sigs/azuredisk-csi-driver)
-- [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
-- [kubectl Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
-
----
 
 ## Support
 
-For issues or questions:
-1. Check pod logs: `kubectl logs <pod-name> -n <namespace>`
-2. Check pod events: `kubectl describe pod <pod-name> -n <namespace>`
-3. Review this troubleshooting guide
-4. Check application-specific logs and metrics in Grafana
-
+- Check logs: `kubectl logs -f deployment/<service> -n saferoute`
+- Review events: `kubectl get events -n saferoute`
+- GitHub Actions logs: Actions tab
+- Contact: DevOps team

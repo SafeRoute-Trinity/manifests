@@ -1,0 +1,27 @@
+# Kubernetes
+*.bak
+*.tmp
+kubeconfig
+.kube/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# MacOS
+.DS_Store
+
+# Secrets (should never be committed)
+*-secret-values.yml
+secrets/*.yml.local
+
+# Temporary files
+*.log
+tmp/
+temp/
+
+# Local testing
+local-test/
