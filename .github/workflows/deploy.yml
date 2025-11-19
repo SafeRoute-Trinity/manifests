@@ -260,13 +260,33 @@ jobs:
           if [ "$SERVICE" == "all" ]; then
             echo "🚀 Deploying all services..."
             
-            # Deploy infrastructure first if needed
-            kubectl apply -f k8s/namespaces/
-            kubectl apply -f k8s/base/
+            # Deploy namespaces (if manifests exist)
+            if compgen -G "k8s/namespaces/*.yml" > /dev/null; then
+              kubectl apply -f k8s/namespaces/
+            else
+              echo "ℹ️ No namespace manifests found"
+            fi
+
+            # Deploy base manifests but skip any storage classes (AKS manages them)
+            if compgen -G "k8s/base/*.yml" > /dev/null; then
+              for manifest in k8s/base/*.yml; do
+                if echo "$(basename "$manifest")" | grep -qi "storageclass"; then
+                  echo "⚠️ Skipping storage class manifest: $manifest"
+                  continue
+                fi
+                kubectl apply -f "$manifest"
+              done
+            else
+              echo "ℹ️ No base manifests found"
+            fi
             
             # Deploy data layer
-            kubectl apply -f k8s/data/postgresql/
-            kubectl apply -f k8s/data/redis/
+            if compgen -G "k8s/data/postgresql/*.yml" > /dev/null; then
+              kubectl apply -f k8s/data/postgresql/
+            fi
+            if compgen -G "k8s/data/redis/*.yml" > /dev/null; then
+              kubectl apply -f k8s/data/redis/
+            fi
             
             # Deploy RabbitMQ
             if [ -f k8s/secrets/rabbitmq-secret.yml ]; then
