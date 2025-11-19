@@ -1,0 +1,275 @@
+name: Deploy to Kubernetes
+
+on:
+  # Manual trigger with service selection and image tag
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to deploy (or "all" for all services)'
+        required: true
+        type: choice
+        options:
+          - all
+          - user-management
+          - notification-service
+          - routing-service
+          - safety-scoring
+          - sos
+          - feedback
+      image_tag:
+        description: 'Docker image tag to deploy (e.g., v1.0.0, latest, dev-abc123)'
+        required: true
+        default: 'latest'
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        default: 'staging'
+        options:
+          - staging
+          - production
+
+  # Webhook trigger from CI repositories
+  repository_dispatch:
+    types: [deploy-service]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || github.event.client_payload.environment || 'staging' }}
+    
+    steps:
+      - name: Checkout manifests
+        uses: actions/checkout@v4
+
+      - name: Set deployment variables
+        id: vars
+        run: |
+          # Determine service and tag from manual trigger or webhook
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            SERVICE="${{ github.event.inputs.service }}"
+            TAG="${{ github.event.inputs.image_tag }}"
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            SERVICE="${{ github.event.client_payload.service }}"
+            TAG="${{ github.event.client_payload.image_tag }}"
+            ENV="${{ github.event.client_payload.environment }}"
+          fi
+          
+          echo "service=${SERVICE}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "environment=${ENV}" >> $GITHUB_OUTPUT
+          
+          echo "🚀 Deploying service: ${SERVICE}"
+          echo "🏷️  Image tag: ${TAG}"
+          echo "🌍 Environment: ${ENV}"
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure Kubernetes context
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+          
+          # Verify connection
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Update image tags in manifests
+        run: |
+          SERVICE="${{ steps.vars.outputs.service }}"
+          TAG="${{ steps.vars.outputs.tag }}"
+          
+          # Map service names to their image names
+          declare -A IMAGE_MAP=(
+            ["user-management"]="saferoute/user-management"
+            ["notification-service"]="saferoute/notification"
+            ["routing-service"]="saferoute/routing-service"
+            ["safety-scoring"]="saferoute/safety-scoring"
+            ["sos"]="saferoute/sos"
+            ["feedback"]="saferoute/feedback"
+          )
+          
+          update_deployment() {
+            local svc=$1
+            local deployment_file="k8s/saferoute/${svc}/deployment.yml"
+            
+            if [ -f "$deployment_file" ]; then
+              local image_name="${IMAGE_MAP[$svc]}"
+              echo "📝 Updating ${deployment_file} with ${image_name}:${TAG}"
+              
+              # Update image tag in deployment file
+              sed -i "s|image: ${image_name}:.*|image: ${image_name}:${TAG}|g" "$deployment_file"
+              
+              echo "✅ Updated ${svc}"
+            else
+              echo "⚠️  Warning: ${deployment_file} not found"
+            fi
+          }
+          
+          if [ "$SERVICE" == "all" ]; then
+            echo "🔄 Updating all services..."
+            for svc in "${!IMAGE_MAP[@]}"; do
+              update_deployment "$svc"
+            done
+          else
+            echo "🔄 Updating ${SERVICE}..."
+            update_deployment "$SERVICE"
+          fi
+
+      - name: Verify Docker images exist
+        run: |
+          SERVICE="${{ steps.vars.outputs.service }}"
+          TAG="${{ steps.vars.outputs.tag }}"
+          
+          # Map service names to their image names
+          declare -A IMAGE_MAP=(
+            ["user-management"]="saferoute/user-management"
+            ["notification-service"]="saferoute/notification"
+            ["routing-service"]="saferoute/routing-service"
+            ["safety-scoring"]="saferoute/safety-scoring"
+            ["sos"]="saferoute/sos"
+            ["feedback"]="saferoute/feedback"
+          )
+          
+          verify_image() {
+            local svc=$1
+            local image_name="${IMAGE_MAP[$svc]}"
+            local full_image="${image_name}:${TAG}"
+            
+            echo "🔍 Verifying ${full_image} exists on Docker Hub..."
+            
+            # Check if image exists (this will pull the manifest, not the full image)
+            if docker manifest inspect "${full_image}" > /dev/null 2>&1; then
+              echo "✅ Image ${full_image} exists"
+            else
+              echo "❌ Error: Image ${full_image} not found on Docker Hub"
+              exit 1
+            fi
+          }
+          
+          if [ "$SERVICE" == "all" ]; then
+            for svc in "${!IMAGE_MAP[@]}"; do
+              verify_image "$svc"
+            done
+          else
+            verify_image "$SERVICE"
+          fi
+
+      - name: Deploy to Kubernetes
+        run: |
+          SERVICE="${{ steps.vars.outputs.service }}"
+          
+          deploy_service() {
+            local svc=$1
+            local service_dir="k8s/saferoute/${svc}"
+            
+            echo "🚀 Deploying ${svc}..."
+            
+            # Apply configmap if exists
+            if [ -f "${service_dir}/configmap.yml" ]; then
+              kubectl apply -f "${service_dir}/configmap.yml"
+            fi
+            
+            # Apply service
+            if [ -f "${service_dir}/service.yml" ]; then
+              kubectl apply -f "${service_dir}/service.yml"
+            fi
+            
+            # Apply deployment
+            if [ -f "${service_dir}/deployment.yml" ]; then
+              kubectl apply -f "${service_dir}/deployment.yml"
+            fi
+            
+            # Wait for rollout to complete
+            if [ -f "${service_dir}/deployment.yml" ]; then
+              echo "⏳ Waiting for ${svc} rollout to complete..."
+              kubectl rollout status deployment/${svc} -n saferoute --timeout=5m
+              echo "✅ ${svc} deployed successfully"
+            fi
+          }
+          
+          if [ "$SERVICE" == "all" ]; then
+            echo "🚀 Deploying all services..."
+            
+            # Deploy infrastructure first if needed
+            kubectl apply -f k8s/namespaces/
+            kubectl apply -f k8s/base/
+            
+            # Deploy data layer
+            kubectl apply -f k8s/data/postgresql/
+            kubectl apply -f k8s/data/redis/
+            
+            # Deploy RabbitMQ
+            if [ -f k8s/secrets/rabbitmq-secret.yml ]; then
+              kubectl apply -f k8s/secrets/rabbitmq-secret.yml
+            fi
+            kubectl apply -f k8s/saferoute/rabbitmq/
+            
+            # Deploy all microservices
+            for svc in user-management notification-service routing-service safety-scoring sos feedback; do
+              deploy_service "$svc"
+            done
+            
+            # Deploy ingress
+            if [ -f k8s/saferoute/ingress.yml ]; then
+              kubectl apply -f k8s/saferoute/ingress.yml
+            fi
+            
+          else
+            deploy_service "$SERVICE"
+          fi
+
+      - name: Verify deployment
+        run: |
+          SERVICE="${{ steps.vars.outputs.service }}"
+          
+          echo "🔍 Verifying deployment status..."
+          
+          if [ "$SERVICE" == "all" ]; then
+            kubectl get pods -n saferoute
+            kubectl get services -n saferoute
+          else
+            kubectl get pods -n saferoute -l app=${SERVICE}
+            kubectl describe deployment ${SERVICE} -n saferoute
+          fi
+
+      - name: Commit updated manifests
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          TAG="${{ steps.vars.outputs.tag }}"
+          SERVICE="${{ steps.vars.outputs.service }}"
+          
+          git add k8s/saferoute/*/deployment.yml
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Deploy ${SERVICE} with tag ${TAG}"
+            git push
+          fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${{ steps.vars.outputs.service }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Tag**: ${{ steps.vars.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ steps.vars.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment completed successfully!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Deployment failed. Check the logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
