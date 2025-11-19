@@ -61,7 +61,7 @@ jobs:
           get_latest_tag() {
             local image_name=$1
             
-            echo "🔍 Fetching latest tag for ${image_name}..."
+            echo "🔍 Fetching latest tag for ${image_name}..." >&2
             
             # Get the latest tag from Docker Hub (excluding 'latest' and 'buildcache')
             # This fetches the most recently pushed tag
@@ -70,11 +70,11 @@ jobs:
               head -n 1)
             
             if [ -z "$latest_tag" ]; then
-              echo "⚠️  No tags found, falling back to 'latest'"
+              echo "⚠️  No tags found, falling back to 'latest'" >&2
               latest_tag="latest"
             fi
             
-            echo "✅ Latest tag for ${image_name}: ${latest_tag}"
+            echo "✅ Latest tag for ${image_name}: ${latest_tag}" >&2
             echo "$latest_tag"
           }
           
@@ -82,7 +82,7 @@ jobs:
           declare -A SERVICE_TAGS
           
           if [ "$SERVICE" == "all" ]; then
-            echo "📦 Fetching latest tags for all services..."
+            echo "📦 Fetching latest tags for all services..." >&2
             for svc in "${!IMAGE_MAP[@]}"; do
               image_name="${IMAGE_MAP[$svc]}"
               tag=$(get_latest_tag "$image_name")
@@ -90,7 +90,7 @@ jobs:
               echo "${svc}_tag=${tag}" >> $GITHUB_OUTPUT
             done
           else
-            echo "📦 Fetching latest tag for ${SERVICE}..."
+            echo "📦 Fetching latest tag for ${SERVICE}..." >&2
             image_name="${IMAGE_MAP[$SERVICE]}"
             tag=$(get_latest_tag "$image_name")
             SERVICE_TAGS["$SERVICE"]="$tag"
