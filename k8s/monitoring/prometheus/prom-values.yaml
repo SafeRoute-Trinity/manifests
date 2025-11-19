@@ -1,0 +1,20 @@
+# prom-values.yaml
+alertmanager:
+  enabled: false
+
+pushgateway:
+  enabled: false
+
+server:
+  replicaCount: 1
+
+  persistentVolume:
+    enabled: false   # no PV, metrics will reset on restart but fine for dev
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
