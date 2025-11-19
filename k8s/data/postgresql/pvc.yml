@@ -8,7 +8,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: managed-premium  # AKS default Premium SSD
+  storageClassName: managed  # Standard HDD - Low cost
   resources:
     requests:
       storage: 50Gi

@@ -79,5 +79,5 @@ spec:
       resources:
         requests:
           storage: 2Gi
-      storageClassName: managed-premium
+      storageClassName: managed  # Standard HDD - Low cost
 

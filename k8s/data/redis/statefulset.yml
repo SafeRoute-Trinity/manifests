@@ -61,7 +61,7 @@ spec:
       name: redis-data
     spec:
       accessModes: [ "ReadWriteOnce" ]
-      storageClassName: managed-premium  # AKS default Premium SSD
+      storageClassName: managed  # Standard HDD - Low cost
       resources:
         requests:
           storage: 10Gi
