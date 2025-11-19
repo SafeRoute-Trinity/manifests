@@ -155,7 +155,38 @@ kubectl get pods -n data
 kubectl get pvc -n data
 ```
 
-### Step 7: Deploy SafeRoute Application Services
+### Step 7: Deploy RabbitMQ (SafeRoute Namespace)
+```bash
+# NOTE: Apply the RabbitMQ credentials secret beforehand
+# kubectl create secret generic rabbitmq-secret \
+#   --from-literal=username=<username> \
+#   --from-literal=password=<password> \
+#   --from-literal=erlangCookie=<cookie> \
+#   -n saferoute
+
+# Deploy RabbitMQ StatefulSet and Services
+kubectl apply -f saferoute/rabbitmq/statefulset.yml
+kubectl apply -f saferoute/rabbitmq/service.yml
+
+# Wait for RabbitMQ pod
+kubectl wait --for=condition=ready pod -l app=rabbitmq -n saferoute --timeout=300s
+
+# Verify resources
+kubectl get pods -n saferoute -l app=rabbitmq
+kubectl get svc rabbitmq -n saferoute
+
+# (Optional) Port-forward the management UI
+# kubectl port-forward -n saferoute svc/rabbitmq 15672:15672
+# open http://localhost:15672 with the secret credentials
+```
+
+All services inside the cluster can reach RabbitMQ via:
+
+```
+amqp://<username>:<password>@rabbitmq.saferoute.svc.cluster.local:5672/
+```
+
+### Step 8: Deploy SafeRoute Application Services
 ```bash
 # Deploy ConfigMaps for all services
 kubectl apply -f saferoute/user-management/configmap.yml
@@ -192,7 +223,7 @@ kubectl get pods -n saferoute
 kubectl get services -n saferoute
 ```
 
-### Step 8: Deploy Ingress
+### Step 9: Deploy Ingress
 ```bash
 # Deploy Ingress resource
 kubectl apply -f saferoute/ingress.yml
@@ -217,7 +248,7 @@ echo "Ingress Host: $INGRESS_HOST"
 curl -H "Host: saferoute.local" http://$INGRESS_IP/api/users/health
 ```
 
-### Step 9: Deploy Network Policies
+### Step 10: Deploy Network Policies
 ```bash
 # Apply network policies for security
 kubectl apply -f base/networkpolicies.yml
@@ -227,7 +258,7 @@ kubectl get networkpolicies -n data
 kubectl get networkpolicies -n saferoute
 ```
 
-### Step 10: Deploy Monitoring Stack (Optional)
+### Step 11: Deploy Monitoring Stack (Optional)
 ```bash
 # Create RBAC for Prometheus
 kubectl apply -f monitoring/prometheus/rbac.yml
@@ -259,7 +290,7 @@ kubectl port-forward -n monitoring svc/grafana 3000:3000 &
 kubectl get pods -n monitoring
 ```
 
-### Step 11: Setup Azure Blob Storage Backup for PostgreSQL (Optional)
+### Step 12: Setup Azure Blob Storage Backup for PostgreSQL (Optional)
 ```bash
 # Set variables
 STORAGE_ACCOUNT_NAME="saferoutebackups$(openssl rand -hex 4)"

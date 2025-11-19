@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: saferoute
+  labels:
+    app: rabbitmq
+spec:
+  serviceName: rabbitmq-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3.13-management
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: amqp
+          containerPort: 5672
+        - name: management
+          containerPort: 15672
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: username
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: password
+        - name: RABBITMQ_ERLANG_COOKIE
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: erlangCookie
+        - name: RABBITMQ_PLUGINS
+          value: rabbitmq_management
+        readinessProbe:
+          exec:
+            command:
+            - rabbitmq-diagnostics
+            - -q
+            - check_port_listener
+            - "5672"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+            - rabbitmq-diagnostics
+            - -q
+            - status
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        volumeMounts:
+        - name: rabbitmq-data
+          mountPath: /var/lib/rabbitmq
+  volumeClaimTemplates:
+  - metadata:
+      name: rabbitmq-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+      storageClassName: managed-premium
+
