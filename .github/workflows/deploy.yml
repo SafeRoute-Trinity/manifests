@@ -101,6 +101,14 @@ jobs:
         uses: azure/setup-kubectl@v3
         with:
           version: 'v1.28.0'
+      
+      - name: Install yq for YAML processing
+        run: |
+          # Install yq for filtering StorageClass resources from YAML
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 || \
+            curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version || echo "⚠️ yq installation failed, will use fallback method"
 
       - name: Configure Kubernetes context
         run: |
@@ -228,6 +236,67 @@ jobs:
         run: |
           SERVICE="${{ steps.vars.outputs.service }}"
           
+          # Helper function to apply manifests while excluding StorageClass resources
+          # StorageClasses are immutable and managed by AKS, so we skip them
+          apply_without_storageclass() {
+            local manifest_path=$1
+            local temp_file=$(mktemp)
+            local has_storageclass=false
+            
+            # Check if file contains StorageClass resources
+            if grep -qE "^\s*kind:\s*StorageClass\s*$" "$manifest_path"; then
+              has_storageclass=true
+              echo "⚠️ Detected StorageClass in $manifest_path, filtering it out..."
+            fi
+            
+            if [ "$has_storageclass" = true ] && command -v yq >/dev/null 2>&1; then
+              # Use yq to filter out StorageClass resources
+              # Split by document separator and filter
+              yq eval-all 'select(.kind != "StorageClass")' "$manifest_path" > "$temp_file" 2>/dev/null || {
+                # Fallback: try single document mode
+                yq eval 'select(.kind != "StorageClass")' "$manifest_path" > "$temp_file" 2>/dev/null || {
+                  cp "$manifest_path" "$temp_file"
+                }
+              }
+            else
+              cp "$manifest_path" "$temp_file"
+            fi
+            
+            # Apply the manifest and handle StorageClass errors gracefully
+            local output_file=$(mktemp)
+            local exit_code=0
+            kubectl apply -f "$temp_file" > "$output_file" 2>&1 || exit_code=$?
+            
+            if [ $exit_code -ne 0 ]; then
+              # Check if error is StorageClass related
+              if grep -qE "StorageClass.*is invalid|Forbidden.*updates to (parameters|reclaimPolicy) are forbidden" "$output_file"; then
+                echo "⚠️ Warning: StorageClass update skipped (managed by AKS - immutable fields)"
+                # Show non-error output
+                grep -vE "StorageClass.*is invalid|Forbidden.*updates" "$output_file" || true
+              else
+                # Non-StorageClass error - show and fail
+                cat "$output_file"
+                rm -f "$temp_file" "$output_file"
+                exit $exit_code
+              fi
+            else
+              # Success - show output
+              cat "$output_file"
+            fi
+            
+            rm -f "$temp_file" "$output_file"
+          }
+          
+          # Helper function to apply directory while excluding StorageClass resources
+          apply_dir_without_storageclass() {
+            local dir_path=$1
+            for manifest in "$dir_path"/*.yml "$dir_path"/*.yaml; do
+              if [ -f "$manifest" ]; then
+                apply_without_storageclass "$manifest"
+              fi
+            done
+          }
+          
           deploy_service() {
             local svc=$1
             local service_dir="k8s/saferoute/${svc}"
@@ -236,17 +305,17 @@ jobs:
             
             # Apply configmap if exists
             if [ -f "${service_dir}/configmap.yml" ]; then
-              kubectl apply -f "${service_dir}/configmap.yml"
+              apply_without_storageclass "${service_dir}/configmap.yml"
             fi
             
             # Apply service
             if [ -f "${service_dir}/service.yml" ]; then
-              kubectl apply -f "${service_dir}/service.yml"
+              apply_without_storageclass "${service_dir}/service.yml"
             fi
             
             # Apply deployment
             if [ -f "${service_dir}/deployment.yml" ]; then
-              kubectl apply -f "${service_dir}/deployment.yml"
+              apply_without_storageclass "${service_dir}/deployment.yml"
             fi
             
             # Wait for rollout to complete
@@ -262,7 +331,7 @@ jobs:
             
             # Deploy namespaces (if manifests exist)
             if compgen -G "k8s/namespaces/*.yml" > /dev/null; then
-              kubectl apply -f k8s/namespaces/
+              apply_dir_without_storageclass "k8s/namespaces"
             else
               echo "ℹ️ No namespace manifests found"
             fi
@@ -274,7 +343,7 @@ jobs:
                   echo "⚠️ Skipping storage class manifest: $manifest"
                   continue
                 fi
-                kubectl apply -f "$manifest"
+                apply_without_storageclass "$manifest"
               done
             else
               echo "ℹ️ No base manifests found"
@@ -282,17 +351,19 @@ jobs:
             
             # Deploy data layer
             if compgen -G "k8s/data/postgresql/*.yml" > /dev/null; then
-              kubectl apply -f k8s/data/postgresql/
+              apply_dir_without_storageclass "k8s/data/postgresql"
             fi
             if compgen -G "k8s/data/redis/*.yml" > /dev/null; then
-              kubectl apply -f k8s/data/redis/
+              apply_dir_without_storageclass "k8s/data/redis"
             fi
             
             # Deploy RabbitMQ
             if [ -f k8s/secrets/rabbitmq-secret.yml ]; then
-              kubectl apply -f k8s/secrets/rabbitmq-secret.yml
+              apply_without_storageclass "k8s/secrets/rabbitmq-secret.yml"
             fi
-            kubectl apply -f k8s/saferoute/rabbitmq/
+            if [ -d k8s/saferoute/rabbitmq ]; then
+              apply_dir_without_storageclass "k8s/saferoute/rabbitmq"
+            fi
             
             # Deploy all microservices
             for svc in user-management notification-service routing-service safety-scoring sos feedback; do
@@ -301,7 +372,7 @@ jobs:
             
             # Deploy ingress
             if [ -f k8s/saferoute/ingress.yml ]; then
-              kubectl apply -f k8s/saferoute/ingress.yml
+              apply_without_storageclass "k8s/saferoute/ingress.yml"
             fi
             
           else
