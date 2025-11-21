@@ -1,6 +1,14 @@
 name: Deploy to Kubernetes
 
 on:
+  # Automatic trigger on merge to main
+  push:
+    branches:
+      - main
+    paths:
+      - 'k8s/**'
+      - '.github/workflows/deploy.yml'
+
   # Manual trigger with service selection
   workflow_dispatch:
     inputs:
@@ -32,10 +40,15 @@ jobs:
       - name: Set deployment variables
         id: vars
         run: |
-          # Determine service from manual trigger or webhook
+          # Determine service from trigger type
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Manual trigger - use input
             SERVICE="${{ github.event.inputs.service }}"
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            # Push to main - deploy all services
+            SERVICE="all"
           else
+            # Repository dispatch/webhook - use payload
             SERVICE="${{ github.event.client_payload.service }}"
           fi
           
