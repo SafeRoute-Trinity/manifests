@@ -144,13 +144,11 @@ jobs:
             # Try kubectl validation if possible (but don't fail if it can't connect)
             # Create a dummy kubeconfig to prevent connection attempts
             local dummy_kubeconfig=$(mktemp)
-            cat > "$dummy_kubeconfig" <<EOF
-apiVersion: v1
-kind: Config
-clusters: []
-users: []
-contexts: []
-EOF
+            echo "apiVersion: v1" > "$dummy_kubeconfig"
+            echo "kind: Config" >> "$dummy_kubeconfig"
+            echo "clusters: []" >> "$dummy_kubeconfig"
+            echo "users: []" >> "$dummy_kubeconfig"
+            echo "contexts: []" >> "$dummy_kubeconfig"
             
             KUBECONFIG="$dummy_kubeconfig" kubectl apply --dry-run=client -f "$file" >/dev/null 2>&1
             local kubectl_exit=$?
