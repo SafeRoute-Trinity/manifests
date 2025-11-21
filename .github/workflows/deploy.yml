@@ -236,12 +236,31 @@ jobs:
         run: |
           SERVICE="${{ steps.vars.outputs.service }}"
           
-          # Helper function to apply manifests while excluding StorageClass resources
-          # StorageClasses are immutable and managed by AKS, so we skip them
+          # Helper function to apply manifests while handling immutable resources
+          # StorageClasses and PVCs have immutable fields that cannot be updated
           apply_without_storageclass() {
             local manifest_path=$1
             local temp_file=$(mktemp)
             local has_storageclass=false
+            
+            # Check if file contains PVC resources and if they already exist
+            if grep -qE "^\s*kind:\s*PersistentVolumeClaim\s*$" "$manifest_path"; then
+              # Extract PVC name and namespace using yq if available, otherwise use grep
+              if command -v yq >/dev/null 2>&1; then
+                local pvc_name=$(yq eval '.metadata.name' "$manifest_path" 2>/dev/null | head -1)
+                local pvc_namespace=$(yq eval '.metadata.namespace // "default"' "$manifest_path" 2>/dev/null | head -1)
+              else
+                # Fallback: use grep to extract name and namespace
+                local pvc_name=$(grep -A 5 "kind:\s*PersistentVolumeClaim" "$manifest_path" | grep -E "^\s*name:\s*" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+                local pvc_namespace=$(grep -A 10 "kind:\s*PersistentVolumeClaim" "$manifest_path" | grep -E "^\s*namespace:\s*" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || echo "default")
+              fi
+              
+              if [ -n "$pvc_name" ] && kubectl get pvc "$pvc_name" -n "$pvc_namespace" >/dev/null 2>&1; then
+                echo "ℹ️  PVC $pvc_name already exists in namespace $pvc_namespace, skipping (PVCs are immutable - storageClassName cannot be changed)"
+                rm -f "$temp_file"
+                return 0
+              fi
+            fi
             
             # Check if file contains StorageClass resources
             if grep -qE "^\s*kind:\s*StorageClass\s*$" "$manifest_path"; then
@@ -262,7 +281,7 @@ jobs:
               cp "$manifest_path" "$temp_file"
             fi
             
-            # Apply the manifest and handle StorageClass errors gracefully
+            # Apply the manifest and handle immutable resource errors gracefully
             local output_file=$(mktemp)
             local exit_code=0
             kubectl apply -f "$temp_file" > "$output_file" 2>&1 || exit_code=$?
@@ -273,8 +292,14 @@ jobs:
                 echo "⚠️ Warning: StorageClass update skipped (managed by AKS - immutable fields)"
                 # Show non-error output
                 grep -vE "StorageClass.*is invalid|Forbidden.*updates" "$output_file" || true
+              # Check if error is PVC immutability related
+              elif grep -qE "PersistentVolumeClaim.*is invalid|spec.*is immutable after creation" "$output_file"; then
+                echo "⚠️ Warning: PersistentVolumeClaim update skipped (immutable after creation - storageClassName cannot be changed)"
+                echo "ℹ️  The PVC already exists with different spec. Only storage size can be updated for existing PVCs."
+                # Show non-error output
+                grep -vE "PersistentVolumeClaim.*is invalid|spec.*is immutable" "$output_file" || true
               else
-                # Non-StorageClass error - show and fail
+                # Non-immutable resource error - show and fail
                 cat "$output_file"
                 rm -f "$temp_file" "$output_file"
                 exit $exit_code
@@ -292,6 +317,16 @@ jobs:
             local dir_path=$1
             for manifest in "$dir_path"/*.yml "$dir_path"/*.yaml; do
               if [ -f "$manifest" ]; then
+                # For PVCs, check if they already exist and skip if they do
+                if grep -qE "^\s*kind:\s*PersistentVolumeClaim\s*$" "$manifest"; then
+                  local pvc_name=$(grep -E "^\s*name:\s*" "$manifest" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+                  local pvc_namespace=$(grep -E "^\s*namespace:\s*" "$manifest" | head -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || echo "default")
+                  
+                  if kubectl get pvc "$pvc_name" -n "$pvc_namespace" >/dev/null 2>&1; then
+                    echo "ℹ️  PVC $pvc_name already exists in namespace $pvc_namespace, skipping (PVCs are immutable)"
+                    continue
+                  fi
+                fi
                 apply_without_storageclass "$manifest"
               fi
             done
