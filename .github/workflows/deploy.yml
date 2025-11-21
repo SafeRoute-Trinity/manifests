@@ -237,7 +237,7 @@ jobs:
           SERVICE="${{ steps.vars.outputs.service }}"
           
           # Helper function to apply manifests while handling immutable resources
-          # StorageClasses and PVCs have immutable fields that cannot be updated
+          # StorageClasses, PVCs, and StatefulSets have immutable fields that cannot be updated
           apply_without_storageclass() {
             local manifest_path=$1
             local temp_file=$(mktemp)
@@ -298,6 +298,14 @@ jobs:
                 echo "ℹ️  The PVC already exists with different spec. Only storage size can be updated for existing PVCs."
                 # Show non-error output
                 grep -vE "PersistentVolumeClaim.*is invalid|spec.*is immutable" "$output_file" || true
+              # Check if error is StatefulSet immutability related
+              elif grep -qE "StatefulSet.*is invalid|Forbidden.*updates to statefulset spec" "$output_file"; then
+                echo "⚠️ Warning: StatefulSet update skipped (immutable fields detected)"
+                echo "ℹ️  StatefulSet spec fields like volumeClaimTemplates are immutable after creation."
+                echo "ℹ️  Only replicas, template, updateStrategy, and minReadySeconds can be updated."
+                echo "ℹ️  To change immutable fields, delete and recreate the StatefulSet (data will be preserved if PVCs exist)."
+                # Show non-error output
+                grep -vE "StatefulSet.*is invalid|Forbidden.*updates to statefulset" "$output_file" || true
               else
                 # Non-immutable resource error - show and fail
                 cat "$output_file"
