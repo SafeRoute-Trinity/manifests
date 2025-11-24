@@ -8,4 +8,8 @@ data:
   # TODO: Change to your Auth0 domain
   auth0.domain: "saferoute.eu.auth0.com"
   log.level: "info"
+  # Redis cache TTL in seconds (default: 3600 = 1 hour)
+  redis.cache.ttl: "3600"
+  # Auth token cache TTL in seconds (default: 3600 = 1 hour)
+  redis.auth.token.ttl: "3600"
 
