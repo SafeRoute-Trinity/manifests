@@ -61,10 +61,10 @@ All services use images from Docker Hub:
 
 | Service | Docker Hub Repository | Default Tag |
 |---------|----------------------|-------------|
-| user-management | saferoute/user-management | latest |
+| user-management | saferoute/user_management | latest |
 | notification-service | saferoute/notification | latest |
-| routing-service | saferoute/routing-service | latest |
-| safety-scoring | saferoute/safety-scoring | latest |
+| routing-service | saferoute/routing_service | latest |
+| safety-scoring | saferoute/safety_scoring | latest |
 | sos | saferoute/sos | latest |
 | feedback | saferoute/feedback | latest |
 

@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
       - name: user-management
-        image: saferoute/user-management:latest
+        image: saferoute/user_management:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 80
