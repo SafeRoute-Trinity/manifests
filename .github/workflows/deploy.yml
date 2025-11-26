@@ -196,10 +196,10 @@ jobs:
           
           # Map service names to their image names
           declare -A IMAGE_MAP=(
-            ["user-management"]="saferoute/user-management"
+            ["user-management"]="saferoute/user_management"
             ["notification-service"]="saferoute/notification"
-            ["routing-service"]="saferoute/routing-service"
-            ["safety-scoring"]="saferoute/safety-scoring"
+            ["routing-service"]="saferoute/routing_service"
+            ["safety-scoring"]="saferoute/safety_scoring"
             ["sos"]="saferoute/sos"
             ["feedback"]="saferoute/feedback"
           )
