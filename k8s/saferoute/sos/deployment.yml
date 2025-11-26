@@ -58,6 +58,21 @@ spec:
             secretKeyRef:
               name: redis-secret
               key: password
+        - name: TWILIO_ACCOUNT_SID
+          valueFrom:
+            secretKeyRef:
+              name: twilio-secret
+              key: TWILIO_ACCOUNT_SID
+        - name: TWILIO_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: twilio-secret
+              key: TWILIO_AUTH_TOKEN
+        - name: TWILIO_PHONE_NUMBER
+          valueFrom:
+            secretKeyRef:
+              name: twilio-secret
+              key: TWILIO_PHONE_NUMBER
         resources:
           requests:
             memory: "128Mi"
