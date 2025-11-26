@@ -58,6 +58,16 @@ spec:
             secretKeyRef:
               name: redis-secret
               key: password
+        - name: REDIS_CACHE_TTL
+          valueFrom:
+            configMapKeyRef:
+              name: user-management-config
+              key: redis.cache.ttl
+        - name: REDIS_AUTH_TOKEN_TTL
+          valueFrom:
+            configMapKeyRef:
+              name: user-management-config
+              key: redis.auth.token.ttl
         - name: AUTH0_DOMAIN
           valueFrom:
             configMapKeyRef:
