@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
       - name: routing-service
-        image: saferoute/routing-service:latest
+        image: saferoute/routing_service:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 80

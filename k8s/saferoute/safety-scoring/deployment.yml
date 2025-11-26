@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
       - name: safety-scoring
-        image: saferoute/safety-scoring:latest
+        image: saferoute/safety_scoring:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 80
