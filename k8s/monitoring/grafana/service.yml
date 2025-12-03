@@ -6,12 +6,12 @@ metadata:
   labels:
     app: grafana
 spec:
-  type: NodePort
+  type: LoadBalancer
   ports:
   - port: 3000
     targetPort: 3000
-    nodePort: 30030
     name: web
   selector:
-    app: grafana
+    app.kubernetes.io/instance: grafana
+    app.kubernetes.io/name: grafana
 

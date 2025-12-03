@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - saferoutemap.duckdns.org
+      secretName: saferoutemap-duckdns-tls
+  rules:
+    - host: saferoutemap.duckdns.org
+      http:
+        paths:
+          # Grafana - exposed via ingress
+          # Access at: http://saferoutemap.duckdns.org/grafana
+          # Default credentials: admin/admin
+          # Note: Grafana is configured with GF_SERVER_SERVE_FROM_SUB_PATH=true
+          # so it handles the /grafana path internally
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+

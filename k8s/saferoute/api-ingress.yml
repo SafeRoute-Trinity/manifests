@@ -1,0 +1,115 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: saferoute-api-ingress
+  namespace: saferoute
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - saferoutemap.duckdns.org
+      secretName: saferoutemap-duckdns-tls
+  rules:
+    - host: saferoutemap.duckdns.org
+      http:
+        paths:
+          # User Management API - routes /v1/users/* and /v1/auth/*
+          # Use Exact for specific endpoints to prevent rewrite issues
+          - path: /v1/users/register
+            pathType: Exact
+            backend:
+              service:
+                name: user-management
+                port:
+                  number: 80
+          
+          # Use Prefix for other /v1/users/* paths
+          - path: /v1/users
+            pathType: Prefix
+            backend:
+              service:
+                name: user-management
+                port:
+                  number: 80
+          
+          - path: /v1/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: user-management
+                port:
+                  number: 80
+          
+          # Notification API - routes /v1/notifications/*
+          - path: /v1/notifications
+            pathType: Prefix
+            backend:
+              service:
+                name: notification-service
+                port:
+                  number: 80
+          
+          # Routing API - routes /route, /isochrone, /v1/routes/* and /v1/navigation/*
+          - path: /route
+            pathType: Exact
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          - path: /isochrone
+            pathType: Exact
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          - path: /v1/routes
+            pathType: Prefix
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          - path: /v1/navigation
+            pathType: Prefix
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
+          # Safety Scoring API - routes /v1/safety/*
+          - path: /v1/safety
+            pathType: Prefix
+            backend:
+              service:
+                name: safety-scoring
+                port:
+                  number: 80
+          
+          # Feedback API - routes /v1/feedback/*
+          - path: /v1/feedback
+            pathType: Prefix
+            backend:
+              service:
+                name: feedback
+                port:
+                  number: 80
+          
+          # SOS/Emergency API - routes /v1/emergency/*
+          - path: /v1/emergency
+            pathType: Prefix
+            backend:
+              service:
+                name: sos
+                port:
+                  number: 80
+

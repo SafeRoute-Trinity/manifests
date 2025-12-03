@@ -1,3 +1,12 @@
+# NOTE: This deployment is managed by Helm.
+# Do not apply this file directly - it will conflict with the Helm-managed deployment.
+# To update Grafana configuration, either:
+# 1. Update Helm values and upgrade the release
+# 2. Use kubectl patch to add environment variables (as done for subpath support)
+#
+# The subpath configuration (GF_SERVER_ROOT_URL and GF_SERVER_SERVE_FROM_SUB_PATH)
+# has been patched into the Helm-managed deployment.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,6 +38,11 @@ spec:
           value: admin
         - name: GF_INSTALL_PLUGINS
           value: grafana-piechart-panel
+        # Subpath configuration - patched into Helm deployment
+        - name: GF_SERVER_ROOT_URL
+          value: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+        - name: GF_SERVER_SERVE_FROM_SUB_PATH
+          value: "true"
         volumeMounts:
         - name: grafana-storage
           mountPath: /var/lib/grafana
@@ -53,5 +67,6 @@ spec:
           periodSeconds: 5
       volumes:
       - name: grafana-storage
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: grafana-storage
 

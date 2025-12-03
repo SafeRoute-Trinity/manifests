@@ -412,13 +412,16 @@ jobs:
             if compgen -G "k8s/data/redis/*.yml" > /dev/null; then
               apply_dir_without_storageclass "k8s/data/redis"
             fi
+            if compgen -G "k8s/data/rabbitmq/*.yml" > /dev/null; then
+              apply_dir_without_storageclass "k8s/data/rabbitmq"
+            fi
             
             # Deploy RabbitMQ
             if [ -f k8s/secrets/rabbitmq-secret.yml ]; then
               apply_without_storageclass "k8s/secrets/rabbitmq-secret.yml"
             fi
-            if [ -d k8s/saferoute/rabbitmq ]; then
-              apply_dir_without_storageclass "k8s/saferoute/rabbitmq"
+            if [ -d k8s/data/rabbitmq ]; then
+              apply_dir_without_storageclass "k8s/data/rabbitmq"
             fi
             
             # Deploy all microservices
@@ -429,6 +432,16 @@ jobs:
             # Deploy ingress
             if [ -f k8s/saferoute/ingress.yml ]; then
               apply_without_storageclass "k8s/saferoute/ingress.yml"
+            fi
+            
+            # Deploy monitoring ingress (Grafana)
+            if [ -f k8s/monitoring/grafana-ingress.yml ]; then
+              apply_without_storageclass "k8s/monitoring/grafana-ingress.yml"
+            fi
+            
+            # Deploy data layer ingress (RabbitMQ)
+            if [ -f k8s/data/rabbitmq/ingress.yml ]; then
+              apply_without_storageclass "k8s/data/rabbitmq/ingress.yml"
             fi
             
           else

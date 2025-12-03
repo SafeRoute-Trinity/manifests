@@ -21,11 +21,32 @@ spec:
         - containerPort: 6379
           name: redis
         command:
-        - redis-server
-        - --appendonly
-        - "yes"
-        - --requirepass
-        - "$(REDIS_PASSWORD)"
+        - /bin/sh
+        - -c
+        - |
+          # Start Redis without requirepass (using ACL only)
+          # Note: We use ACL users instead of requirepass to avoid conflicts
+          # Create ACL file if it doesn't exist
+          touch /data/users.acl || true
+          redis-server --appendonly yes --aclfile /data/users.acl &
+          REDIS_PID=$!
+          
+          # Wait for Redis to be ready (no password needed initially)
+          until redis-cli ping > /dev/null 2>&1; do
+            sleep 1
+          done
+          
+          # Create ACL user saferoute with password (if not already exists)
+          redis-cli --no-auth-warning ACL SETUSER saferoute on ">LB04@Redis" "~*" "&*" "+@all" || true
+          
+          # Verify user was created
+          redis-cli --no-auth-warning ACL GETUSER saferoute || true
+          
+          # Save ACL configuration to file so it persists across restarts
+          redis-cli --no-auth-warning ACL SAVE || true
+          
+          # Wait for Redis process
+          wait $REDIS_PID
         env:
         - name: REDIS_PASSWORD
           valueFrom:

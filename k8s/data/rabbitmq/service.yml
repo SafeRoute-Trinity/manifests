@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: data
+  labels:
+    app: rabbitmq
+spec:
+  type: ClusterIP
+  # Using regular ClusterIP (not headless) to support ingress access
+  # For single-replica StatefulSet, this works fine
+  ports:
+  - port: 5672
+    targetPort: 5672
+    name: amqp
+    protocol: TCP
+  - port: 15672
+    targetPort: 15672
+    name: management
+    protocol: TCP
+  - port: 15692
+    targetPort: 15692
+    name: metrics
+    protocol: TCP
+  selector:
+    app: rabbitmq
+
