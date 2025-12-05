@@ -8,4 +8,6 @@ data:
   # TODO: Add your routing API keys here
   google.maps.api.enabled: "false"
   log.level: "info"
+  # OpenRouteService configuration
+  ors.api.enabled: "true"
 
