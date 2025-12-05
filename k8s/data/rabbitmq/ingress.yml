@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rabbitmq-ingress
+  namespace: data
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: saferoutemap.duckdns.org
+      http:
+        paths:
+          # RabbitMQ Management UI - exposed via ingress
+          # Note: AMQP protocol (port 5672) cannot be exposed via HTTP ingress
+          # Services should connect directly to rabbitmq.data.svc.cluster.local:5672
+          # Security: Consider adding basic auth or restricting access via network policies
+          - path: /rabbitmq(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: rabbitmq
+                port:
+                  number: 15672
+
+

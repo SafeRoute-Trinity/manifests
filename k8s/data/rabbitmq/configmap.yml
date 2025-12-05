@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+  namespace: data
+  labels:
+    app: rabbitmq
+data:
+  rabbitmq.conf: |
+    # Enable management plugin
+    management.tcp.port = 15672
+    
+    # Enable Prometheus metrics
+    prometheus.tcp.port = 15692
+    
+    # Disk free space limit (1GB minimum)
+    disk_free_limit.absolute = 1GB
+    
+    # Memory high watermark (40% of available memory)
+    vm_memory_high_watermark.relative = 0.4
+    
+    # Enable clustering (for future scaling)
+    cluster_formation.peer_discovery_backend = classic_config
+    
+    # Logging
+    log.console = true
+    log.console.level = info
+    
+    # Connection limits
+    connection_max = 1000
+    
+    # Heartbeat timeout
+    heartbeat = 60
+
+
+
+

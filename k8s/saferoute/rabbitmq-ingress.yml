@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rabbitmq-ingress
+  namespace: saferoute
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - saferouterabbitmq.duckdns.org
+      secretName: saferouterabbitmq-duckdns-tls
+  rules:
+    - host: saferouterabbitmq.duckdns.org
+      http:
+        paths:
+          # RabbitMQ Management UI - served from root path on dedicated domain
+          # Note: AMQP protocol (port 5672) cannot be exposed via HTTP ingress
+          # Services should connect directly to rabbitmq.data.svc.cluster.local:5672
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rabbitmq-management
+                port:
+                  number: 15672
+
