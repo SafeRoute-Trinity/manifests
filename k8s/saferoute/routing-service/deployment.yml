@@ -59,7 +59,10 @@ spec:
               name: redis-secret
               key: password
         - name: ORS_API_KEY
-          value: eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjlkN2Q2NDkzNWMxZTQ3Yzg4ODk5NTkzNzkxMTM3NDg2IiwiaCI6Im11cm11cjY0In0=
+          valueFrom:
+            secretKeyRef:
+              name: openrouteservice-secret
+              key: api-key
         resources:
           requests:
             memory: "128Mi"
