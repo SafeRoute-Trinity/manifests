@@ -24,9 +24,14 @@ spec:
       labels:
         app: grafana
     spec:
+      securityContext:
+        fsGroup: 472
       containers:
       - name: grafana
         image: grafana/grafana:latest
+        securityContext:
+          runAsUser: 472
+          runAsNonRoot: true
         ports:
         - containerPort: 3000
           name: web
