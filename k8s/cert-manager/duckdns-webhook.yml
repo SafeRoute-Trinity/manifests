@@ -1,0 +1,199 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cert-manager-webhook-duckdns
+  namespace: cert-manager
+  labels:
+    app: cert-manager-webhook-duckdns
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cert-manager-webhook-duckdns:flowcontrol-solver
+  labels:
+    app: cert-manager-webhook-duckdns
+rules:
+  - apiGroups:
+      - flowcontrol.apiserver.k8s.io
+    resources:
+      - prioritylevelconfigurations
+      - flowschemas
+    verbs:
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cert-manager-webhook-duckdns:flowcontrol-solver
+  labels:
+    app: cert-manager-webhook-duckdns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-webhook-duckdns:flowcontrol-solver
+subjects:
+  - apiGroup: ""
+    kind: ServiceAccount
+    name: cert-manager-webhook-duckdns
+    namespace: cert-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cert-manager-webhook-duckdns:webhook-authentication-reader
+  namespace: kube-system
+  labels:
+    app: cert-manager-webhook-duckdns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - apiGroup: ""
+    kind: ServiceAccount
+    name: cert-manager-webhook-duckdns
+    namespace: cert-manager
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cert-manager-webhook-duckdns:domain-solver
+  labels:
+    app: cert-manager-webhook-duckdns
+rules:
+  - apiGroups:
+      - acme.duckdns.org
+    resources:
+      - '*'
+    verbs:
+      - 'create'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cert-manager-webhook-duckdns:domain-solver
+  labels:
+    app: cert-manager-webhook-duckdns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-webhook-duckdns:domain-solver
+subjects:
+  - apiGroup: ""
+    kind: ServiceAccount
+    name: cert-manager
+    namespace: cert-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cert-manager-webhook-duckdns
+  namespace: cert-manager
+  labels:
+    app: cert-manager-webhook-duckdns
+spec:
+  type: ClusterIP
+  ports:
+    - port: 443
+      targetPort: https
+      protocol: TCP
+      name: https
+  selector:
+    app: cert-manager-webhook-duckdns
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-manager-webhook-duckdns
+  namespace: cert-manager
+  labels:
+    app: cert-manager-webhook-duckdns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cert-manager-webhook-duckdns
+  template:
+    metadata:
+      labels:
+        app: cert-manager-webhook-duckdns
+    spec:
+      serviceAccountName: cert-manager-webhook-duckdns
+      containers:
+        - name: cert-manager-webhook-duckdns
+          image: ghcr.io/ebrianne/cert-manager-webhook-duckdns:v1.3.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --tls-cert-file=/tls/tls.crt
+            - --tls-private-key-file=/tls/tls.key
+          env:
+            - name: GROUP_NAME
+              value: "acme.duckdns.org"
+          ports:
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: /healthz
+              port: https
+          readinessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: /healthz
+              port: https
+          volumeMounts:
+            - name: certs
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: certs
+          secret:
+            secretName: cert-manager-webhook-duckdns-webhook-tls
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.acme.duckdns.org
+  labels:
+    app: cert-manager-webhook-duckdns
+  annotations:
+    cert-manager.io/inject-ca-from: "cert-manager/cert-manager-webhook-duckdns-webhook-tls"
+spec:
+  group: acme.duckdns.org
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: cert-manager-webhook-duckdns
+    namespace: cert-manager
+  version: v1alpha1
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cert-manager-webhook-duckdns-webhook-tls
+  namespace: cert-manager
+  labels:
+    app: cert-manager-webhook-duckdns
+spec:
+  secretName: cert-manager-webhook-duckdns-webhook-tls
+  duration: 8760h # 1 year
+  issuerRef:
+    name: cert-manager-webhook-duckdns-selfsign
+  dnsNames:
+  - cert-manager-webhook-duckdns
+  - cert-manager-webhook-duckdns.cert-manager
+  - cert-manager-webhook-duckdns.cert-manager.svc
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: cert-manager-webhook-duckdns-selfsign
+  namespace: cert-manager
+  labels:
+    app: cert-manager-webhook-duckdns
+spec:
+  selfSigned: {}
