@@ -8,6 +8,9 @@ data:
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
+      external_labels:
+        cluster: 'saferoute'
+        environment: 'production'
     
     scrape_configs:
     - job_name: 'kubernetes-pods'
