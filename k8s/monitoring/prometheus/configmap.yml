@@ -47,4 +47,25 @@ data:
       - targets: ['postgresql.data.svc.cluster.local:9187']
         labels:
           service: 'postgresql'
+    
+    # Health check probing using blackbox exporter
+    - job_name: 'blackbox-healthchecks'
+      metrics_path: /probe
+      params:
+        module: [http_2xx]
+      static_configs:
+      - targets:
+        - http://user-management.saferoute.svc.cluster.local/health
+        - http://routing-service.saferoute.svc.cluster.local/health
+        - http://safety-scoring.saferoute.svc.cluster.local/health
+        - http://feedback.saferoute.svc.cluster.local/health
+        - http://notification-service.saferoute.svc.cluster.local/health
+        - http://sos.saferoute.svc.cluster.local/health
+      relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter.monitoring.svc.cluster.local:9115
 

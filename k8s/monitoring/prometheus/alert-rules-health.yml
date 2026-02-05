@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alert-rules-health
+  namespace: monitoring
+data:
+  health-alerts.yml: |
+    groups:
+    - name: service_health_alerts
+      interval: 30s
+      rules:
+      # Critical: Service is completely down
+      - alert: ServiceDown
+        expr: probe_success{job="blackbox-healthchecks"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "🚨 Service {{ $labels.instance }} is DOWN"
+          description: "Health check for {{ $labels.instance }} has been failing for more than 2 minutes. Immediate action required!"
+          dashboard: "https://grafana.example.com/d/service-health"
+      
+      # Warning: Service is responding slowly
+      - alert: ServiceSlowResponse
+        expr: probe_duration_seconds{job="blackbox-healthchecks"} > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "⚠️ Service {{ $labels.instance }} is slow"
+          description: "{{ $labels.instance }} is responding in {{ $value | humanizeDuration }}. Normal response time is < 1s."
+      
+      # Warning: Service response time degraded
+      - alert: ServiceResponseTimeDegraded
+        expr: |
+          (
+            probe_duration_seconds{job="blackbox-healthchecks"} 
+            / 
+            probe_duration_seconds{job="blackbox-healthchecks"} offset 1h
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "⚠️ Service {{ $labels.instance }} response time degraded"
+          description: "{{ $labels.instance }} response time has increased by 50% compared to 1 hour ago."
+      
+      # Critical: Multiple services down
+      - alert: MultipleServicesDown
+        expr: count(probe_success{job="blackbox-healthchecks"} == 0) >= 2
+        for: 1m
+        labels:
+          severity: critical
+          team: sre
+        annotations:
+          summary: "🚨 Multiple services are DOWN"
+          description: "{{ $value }} services are currently down. This may indicate a systemic issue."
+      
+      # Warning: Low overall system health
+      - alert: SystemHealthDegraded
+        expr: avg(probe_success{job="blackbox-healthchecks"}) * 100 < 90
+        for: 5m
+        labels:
+          severity: warning
+          team: sre
+        annotations:
+          summary: "⚠️ System health degraded"
+          description: "Overall system health is {{ $value | humanize }}%. Target is 100%."
+      
+      # Info: Service returned to healthy state
+      - alert: ServiceRecovered
+        expr: probe_success{job="blackbox-healthchecks"} == 1 and probe_success{job="blackbox-healthchecks"} offset 5m == 0
+        for: 1m
+        labels:
+          severity: info
+          team: backend
+        annotations:
+          summary: "✅ Service {{ $labels.instance }} has RECOVERED"
+          description: "{{ $labels.instance }} is now healthy after being down."
+      
+      # Warning: Unexpected HTTP status code
+      - alert: UnexpectedHTTPStatus
+        expr: probe_http_status_code{job="blackbox-healthchecks"} != 200 and probe_http_status_code{job="blackbox-healthchecks"} > 0
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "⚠️ Unexpected HTTP status for {{ $labels.instance }}"
+          description: "{{ $labels.instance }} returned HTTP {{ $value }}. Expected 200."
+      
+      # Critical: SSL certificate expiring soon
+      - alert: SSLCertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry{job="blackbox-healthchecks"} - time()) / 86400 < 7
+        for: 1h
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "🔐 SSL certificate for {{ $labels.instance }} expiring soon"
+          description: "SSL certificate for {{ $labels.instance }} will expire in {{ $value | humanize }} days."
+      
+      # Warning: SSL certificate expiring in 30 days
+      - alert: SSLCertificateExpiringIn30Days
+        expr: (probe_ssl_earliest_cert_expiry{job="blackbox-healthchecks"} - time()) / 86400 < 30
+        for: 1h
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "🔐 SSL certificate for {{ $labels.instance }} expiring"
+          description: "SSL certificate for {{ $labels.instance }} will expire in {{ $value | humanize }} days. Plan renewal."
+      
+      # Warning: Intermittent failures
+      - alert: ServiceIntermittentFailures
+        expr: |
+          (
+            rate(probe_success{job="blackbox-healthchecks"}[5m]) < 1
+            and
+            rate(probe_success{job="blackbox-healthchecks"}[5m]) > 0
+          )
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "⚠️ Intermittent failures on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has intermittent health check failures. Success rate: {{ $value | humanizePercentage }}."
