@@ -48,6 +48,27 @@ data:
         labels:
           service: 'postgresql'
     
+    # Node exporter for node metrics
+    - job_name: 'node-exporter'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - monitoring
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: node-exporter
+      - source_labels: [__meta_kubernetes_endpoint_node_name]
+        action: replace
+        target_label: node
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+    
     # Health check probing using blackbox exporter
     - job_name: 'blackbox-healthchecks'
       metrics_path: /probe

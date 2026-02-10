@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: monitoring
+  labels:
+    app: node-exporter
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostNetwork: true
+      hostPID: true
+      hostIPC: true
+      containers:
+      - name: node-exporter
+        image: prom/node-exporter:latest
+        ports:
+        - containerPort: 9100
+          name: metrics
+          protocol: TCP
+        args:
+        - '--path.procfs=/host/proc'
+        - '--path.sysfs=/host/sys'
+        - '--path.rootfs=/host/root'
+        - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        - name: root
+          mountPath: /host/root
+          mountPropagation: HostToContainer
+          readOnly: true
+        securityContext:
+          privileged: true
+          runAsUser: 0
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: root
+        hostPath:
+          path: /
