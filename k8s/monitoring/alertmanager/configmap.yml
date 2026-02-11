@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml.template: |
+    global:
+      # SMTP configuration - credentials loaded from Secret via envsubst
+      smtp_smarthost: 'smtp.gmail.com:587'  # Change to your SMTP server if not using Gmail
+      smtp_from: '${SMTP_FROM}'
+      smtp_auth_username: '${SMTP_USERNAME}'
+      smtp_auth_password: '${SMTP_PASSWORD}'
+      smtp_require_tls: true
+    
+    # Route configuration - routes alerts based on labels
+    route:
+      receiver: 'email-notifications'
+      group_by: ['alertname', 'severity']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      routes:
+      # You can add more specific routes here if needed
+      # - match:
+      #     severity: critical
+      #   receiver: 'email-critical'
+    
+    # Receivers - define where alerts are sent
+    receivers:
+    - name: 'email-notifications'
+      email_configs:
+      - to: '${ALERT_EMAIL}'
+        send_resolved: true
+        headers:
+          Subject: '🚨 Alert: {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>Alert Details</h2>
+          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Severity:</strong> {{ .GroupLabels.severity }}</p>
+          <p><strong>Status:</strong> {{ .Status }}</p>
+          <hr>
+          <h3>Description</h3>
+          <p>{{ range .Alerts }}{{ .Annotations.description }}{{ end }}</p>
+          <hr>
+          <h3>Labels</h3>
+          <ul>
+          {{ range .GroupLabels.SortedPairs }}
+            <li><strong>{{ .Name }}:</strong> {{ .Value }}</li>
+          {{ end }}
+          </ul>
+          <hr>
+          <p><small>Firing alerts: {{ len .Alerts }}</small></p>
+    
+    # Inhibition rules - suppress certain alerts when others are firing
+    inhibit_rules:
+    # Suppress warning alerts when critical alerts are firing
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'instance']
