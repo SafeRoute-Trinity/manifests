@@ -33,24 +33,157 @@ data:
       - to: '${ALERT_EMAIL}'
         send_resolved: true
         headers:
-          Subject: '🚨 Alert: {{ .GroupLabels.alertname }}'
+          Subject: '{{ if eq .Status "firing" }}🚨{{ else }}✅{{ end }} {{ .GroupLabels.alertname }}{{ if .GroupLabels.instance }} - {{ .GroupLabels.instance }}{{ end }}'
         html: |
-          <h2>Alert Details</h2>
-          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
-          <p><strong>Severity:</strong> {{ .GroupLabels.severity }}</p>
-          <p><strong>Status:</strong> {{ .Status }}</p>
-          <hr>
-          <h3>Description</h3>
-          <p>{{ range .Alerts }}{{ .Annotations.description }}{{ end }}</p>
-          <hr>
-          <h3>Labels</h3>
-          <ul>
-          {{ range .GroupLabels.SortedPairs }}
-            <li><strong>{{ .Name }}:</strong> {{ .Value }}</li>
-          {{ end }}
-          </ul>
-          <hr>
-          <p><small>Firing alerts: {{ len .Alerts }}</small></p>
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .alert-container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .alert-header { 
+                padding: 15px; 
+                border-radius: 5px; 
+                margin-bottom: 20px;
+                {{ if eq .Status "firing" }}
+                background-color: #fee;
+                border-left: 4px solid #d00;
+                {{ else }}
+                background-color: #efe;
+                border-left: 4px solid #0a0;
+                {{ end }}
+              }
+              .alert-title { font-size: 20px; font-weight: bold; margin: 0 0 10px 0; }
+              .alert-status { 
+                display: inline-block; 
+                padding: 3px 8px; 
+                border-radius: 3px; 
+                font-size: 12px; 
+                font-weight: bold;
+                {{ if eq .Status "firing" }}
+                background-color: #d00; color: white;
+                {{ else }}
+                background-color: #0a0; color: white;
+                {{ end }}
+              }
+              .info-section { margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-radius: 5px; }
+              .info-row { margin: 8px 0; }
+              .info-label { font-weight: bold; color: #555; display: inline-block; min-width: 120px; }
+              .info-value { color: #333; }
+              .description-box { 
+                padding: 15px; 
+                background-color: #fff; 
+                border-left: 3px solid #0066cc; 
+                margin: 15px 0;
+              }
+              .labels-box { 
+                padding: 10px; 
+                background-color: #f5f5f5; 
+                border-radius: 3px; 
+                margin: 10px 0;
+              }
+              .label-item { margin: 5px 0; font-family: monospace; font-size: 13px; }
+              .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
+              .dashboard-link { color: #0066cc; text-decoration: none; }
+              .dashboard-link:hover { text-decoration: underline; }
+            </style>
+          </head>
+          <body>
+            <div class="alert-container">
+              <div class="alert-header">
+                <div class="alert-title">
+                  {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}
+                </div>
+                <span class="alert-status">{{ .Status | toUpper }}</span>
+              </div>
+
+              <div class="info-section">
+                <div class="info-row">
+                  <span class="info-label">Alert Name:</span>
+                  <span class="info-value">{{ .GroupLabels.alertname }}</span>
+                </div>
+                {{ if .GroupLabels.instance }}
+                <div class="info-row">
+                  <span class="info-label">Service/Instance:</span>
+                  <span class="info-value"><strong>{{ .GroupLabels.instance }}</strong></span>
+                </div>
+                {{ end }}
+                <div class="info-row">
+                  <span class="info-label">Severity:</span>
+                  <span class="info-value">
+                    {{ if eq .GroupLabels.severity "critical" }}🔴 CRITICAL
+                    {{ else if eq .GroupLabels.severity "warning" }}🟡 WARNING
+                    {{ else if eq .GroupLabels.severity "info" }}🔵 INFO
+                    {{ else }}{{ .GroupLabels.severity | toUpper }}{{ end }}
+                  </span>
+                </div>
+                {{ if .GroupLabels.team }}
+                <div class="info-row">
+                  <span class="info-label">Team:</span>
+                  <span class="info-value">{{ .GroupLabels.team }}</span>
+                </div>
+                {{ end }}
+                <div class="info-row">
+                  <span class="info-label">Firing Alerts:</span>
+                  <span class="info-value">{{ len .Alerts }}</span>
+                </div>
+                {{ range .Alerts }}
+                {{ if .StartsAt }}
+                <div class="info-row">
+                  <span class="info-label">Started At:</span>
+                  <span class="info-value">{{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}</span>
+                </div>
+                {{ end }}
+                {{ end }}
+              </div>
+
+              <div class="description-box">
+                <h3 style="margin-top: 0;">📋 Description</h3>
+                {{ range .Alerts }}
+                <p style="margin: 0;">{{ .Annotations.description }}</p>
+                {{ end }}
+              </div>
+
+              {{ if .GroupLabels }}
+              <div class="labels-box">
+                <h3 style="margin-top: 0; font-size: 14px;">🏷️ Alert Labels</h3>
+                {{ range .GroupLabels.SortedPairs }}
+                <div class="label-item">
+                  <strong>{{ .Name }}:</strong> {{ .Value }}
+                </div>
+                {{ end }}
+              </div>
+              {{ end }}
+
+              {{ range .Alerts }}
+              {{ if .Annotations.dashboard }}
+              <div class="info-section">
+                <a href="{{ .Annotations.dashboard }}" class="dashboard-link">
+                  📊 View Dashboard →
+                </a>
+              </div>
+              {{ end }}
+              {{ end }}
+
+              <div class="footer">
+                <p style="margin: 5px 0;">
+                  <strong>Alert Group:</strong> {{ .GroupLabels.alertname }}<br>
+                  <strong>Receiver:</strong> {{ .Receiver }}
+                </p>
+                {{ if eq .Status "resolved" }}
+                <p style="margin: 5px 0; color: #0a0;">
+                  ✅ This alert has been resolved. The issue is no longer occurring.
+                </p>
+                {{ else }}
+                <p style="margin: 5px 0; color: #d00;">
+                  ⚠️ This alert is currently firing. Please investigate and take appropriate action.
+                </p>
+                {{ end }}
+              </div>
+            </div>
+          </body>
+          </html>
     
     # Inhibition rules - suppress certain alerts when others are firing
     inhibit_rules:
