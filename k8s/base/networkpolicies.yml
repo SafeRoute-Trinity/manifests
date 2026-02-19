@@ -28,6 +28,15 @@ spec:
   policyTypes:
   - Ingress
   ingress:
+  # Allow ingress controller to reach services on port 80
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 80
+  # Allow monitoring to scrape metrics on port 8080
   - from:
     - namespaceSelector:
         matchLabels:

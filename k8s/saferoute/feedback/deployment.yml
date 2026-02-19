@@ -49,6 +49,8 @@ spec:
             secretKeyRef:
               name: postgresql-secret
               key: password
+        - name: DATABASE_URL
+          value: "postgresql+asyncpg://saferoute:Owen1SL8te@postgresql.data.svc.cluster.local:5432/saferoute"
         - name: REDIS_HOST
           value: redis.data.svc.cluster.local
         - name: REDIS_PORT
