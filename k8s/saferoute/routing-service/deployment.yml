@@ -30,25 +30,27 @@ spec:
         - containerPort: 80
           name: http
         env:
-        - name: DATABASE_HOST
+        - name: POSTGRES_HOST
           value: postgresql.data.svc.cluster.local
-        - name: DATABASE_PORT
+        - name: POSTGRES_PORT
           value: "5432"
-        - name: DATABASE_NAME
+        - name: POSTGRES_DATABASE
           valueFrom:
             configMapKeyRef:
               name: routing-service-config
               key: database.name
-        - name: DATABASE_USER
+        - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
               name: postgresql-secret
               key: username
-        - name: DATABASE_PASSWORD
+        - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
               name: postgresql-secret
               key: password
+        - name: DATABASE_SSLMODE
+          value: "disable"
         - name: REDIS_HOST
           value: redis.data.svc.cluster.local
         - name: REDIS_PORT
