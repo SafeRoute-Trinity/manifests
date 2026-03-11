@@ -104,6 +104,15 @@ spec:
                 port:
                   number: 80
           
+          # Audit API - routes /v1/audit/*
+          - path: /v1/audit
+            pathType: Prefix
+            backend:
+              service:
+                name: audit-service
+                port:
+                  number: 80
+          
           # SOS/Emergency API - routes /v1/emergency/*
           - path: /v1/emergency
             pathType: Prefix
