@@ -109,7 +109,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: audit-service
+                name: user-management
                 port:
                   number: 80
           
