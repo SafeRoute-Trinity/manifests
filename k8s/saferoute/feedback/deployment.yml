@@ -60,6 +60,36 @@ spec:
             secretKeyRef:
               name: redis-secret
               key: password
+        - name: RECAPTCHA_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: feedback-recaptcha-secret
+              key: RECAPTCHA_SECRET_KEY
+        - name: SMTP_HOST
+          valueFrom:
+            secretKeyRef:
+              name: feedback-smtp-secret
+              key: SMTP_HOST
+        - name: SMTP_PORT
+          valueFrom:
+            secretKeyRef:
+              name: feedback-smtp-secret
+              key: SMTP_PORT
+        - name: SMTP_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: feedback-smtp-secret
+              key: SMTP_USERNAME
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: feedback-smtp-secret
+              key: SMTP_PASSWORD
+        - name: SYSTEM_FEEDBACK_TO_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: feedback-smtp-secret
+              key: SYSTEM_FEEDBACK_TO_EMAIL
         resources:
           requests:
             memory: "128Mi"
