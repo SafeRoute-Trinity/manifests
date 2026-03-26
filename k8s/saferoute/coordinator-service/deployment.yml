@@ -1,26 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: notification-service
+  name: coordinator-service
   namespace: saferoute
   labels:
-    app: notification-service
+    app: coordinator-service
     tier: backend
 spec:
   replicas: 1
   revisionHistoryLimit: 2
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
   selector:
     matchLabels:
-      app: notification-service
+      app: coordinator-service
   template:
     metadata:
       labels:
-        app: notification-service
+        app: coordinator-service
         tier: backend
       annotations:
         prometheus.io/scrape: "true"
@@ -28,32 +23,34 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       containers:
-      - name: notification-service
-        image: saferoute/notification:latest
+      - name: coordinator-service
+        image: saferoute/coordinator:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 80
           name: http
         env:
-        - name: DATABASE_HOST
+        - name: POSTGRES_HOST
           value: postgresql.data.svc.cluster.local
-        - name: DATABASE_PORT
+        - name: POSTGRES_PORT
           value: "5432"
-        - name: DATABASE_NAME
+        - name: POSTGRES_DATABASE
           valueFrom:
             configMapKeyRef:
-              name: notification-service-config
+              name: coordinator-service-config
               key: database.name
-        - name: DATABASE_USER
+        - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
               name: postgresql-secret
               key: username
-        - name: DATABASE_PASSWORD
+        - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
               name: postgresql-secret
               key: password
+        - name: DATABASE_SSLMODE
+          value: "disable"
         - name: REDIS_HOST
           value: redis.data.svc.cluster.local
         - name: REDIS_PORT
@@ -63,8 +60,6 @@ spec:
             secretKeyRef:
               name: redis-secret
               key: password
-        - name: OUTBOX_WORKER_ENABLED
-          value: "true"
         resources:
           requests:
             memory: "128Mi"
