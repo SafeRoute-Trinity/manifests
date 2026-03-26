@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: audit-partition-maintainer
+  namespace: data
+spec:
+  schedule: "15 2 * * *"
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: partition-maintainer
+            image: postgis/postgis:15-3.4-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Ensuring future audit partitions exist..."
+              PGPASSWORD=$POSTGRES_PASSWORD psql \
+                -h postgresql.data.svc.cluster.local \
+                -U $POSTGRES_USER \
+                -d $POSTGRES_DB \
+                -v ON_ERROR_STOP=1 \
+                -c "SELECT saferoute.ensure_audit_future_partitions(3);"
+              echo "Partition maintenance complete."
+            env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: password
+            - name: POSTGRES_DB
+              value: saferoute
