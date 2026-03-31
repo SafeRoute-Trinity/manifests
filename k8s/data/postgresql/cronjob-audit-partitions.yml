@@ -4,8 +4,8 @@ metadata:
   name: audit-partition-maintainer
   namespace: data
 spec:
-  schedule: "15 2 * * *"
-  successfulJobsHistoryLimit: 7
+  schedule: "15 2 26 * *"
+  successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
