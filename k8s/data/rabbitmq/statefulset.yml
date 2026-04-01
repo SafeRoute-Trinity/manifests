@@ -58,26 +58,20 @@ spec:
         resources:
           requests:
             memory: "256Mi"
-            cpu: "200m"
+            cpu: "10m"
           limits:
             memory: "512Mi"
-            cpu: "500m"
+            cpu: "200m"
         livenessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -c
-            - rabbitmq-diagnostics -q ping
+          tcpSocket:
+            port: 5672
           initialDelaySeconds: 60
           periodSeconds: 30
-          timeoutSeconds: 10
+          timeoutSeconds: 5
           failureThreshold: 6
         readinessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -c
-            - rabbitmq-diagnostics -q ping
+          tcpSocket:
+            port: 5672
           initialDelaySeconds: 20
           periodSeconds: 10
           timeoutSeconds: 5

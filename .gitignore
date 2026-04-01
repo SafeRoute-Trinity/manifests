@@ -17,6 +17,7 @@ kubeconfig
 # Secrets (should never be committed)
 *-secret-values.yml
 secrets/*.yml.local
+k8s/secrets/rabbitmq-secret.yml
 
 # Temporary files
 *.log

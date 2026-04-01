@@ -49,7 +49,7 @@ spec:
             secretKeyRef:
               name: postgresql-secret
               key: password
-        - name: DATABASE_SSLMODE
+        - name: POSTGRES_SSLMODE
           value: "disable"
         - name: REDIS_HOST
           value: redis.data.svc.cluster.local
@@ -90,6 +90,20 @@ spec:
             secretKeyRef:
               name: feedback-smtp-secret
               key: SYSTEM_FEEDBACK_TO_EMAIL
+        - name: RABBITMQ_HOST
+          value: rabbitmq.data.svc.cluster.local
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: username
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: password
         resources:
           requests:
             memory: "128Mi"
