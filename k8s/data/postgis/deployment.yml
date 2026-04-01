@@ -23,7 +23,14 @@ spec:
       restartPolicy: Always
       containers:
       - name: postgis
-        image: postgis/postgis:15-3.4-alpine
+        image: postgis/postgis:15-3.4
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            apt-get update -qq && \
+            apt-get install -y --no-install-recommends postgresql-15-pgrouting && \
+            rm -rf /var/lib/apt/lists/* && \
+            exec docker-entrypoint.sh postgres
         ports:
         - containerPort: 5432
           name: postgresql
