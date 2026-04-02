@@ -36,14 +36,32 @@ spec:
     ports:
     - protocol: TCP
       port: 80
-  # Allow monitoring to scrape metrics on port 8080
+  # Allow monitoring to scrape metrics — all pods expose metrics on port 80
   - from:
     - namespaceSelector:
         matchLabels:
           name: monitoring
     ports:
     - protocol: TCP
-      port: 8080
+      port: 80
+---
+# Allow pods within the saferoute namespace to call each other on port 80.
+# Required for coordinator-service to route requests to downstream services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-saferoute
+  namespace: saferoute
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

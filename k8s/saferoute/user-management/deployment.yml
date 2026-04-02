@@ -7,8 +7,13 @@ metadata:
     app: user-management
     tier: backend
 spec:
-  replicas: 1
+  replicas: 2
   revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: user-management
@@ -22,6 +27,15 @@ spec:
         prometheus.io/port: "80"
         prometheus.io/path: "/metrics"
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: user-management
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: user-management
         image: saferoute/user_management:latest
@@ -79,8 +93,8 @@ spec:
               key: client-secret
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "25m"
           limits:
             memory: "256Mi"
             cpu: "200m"

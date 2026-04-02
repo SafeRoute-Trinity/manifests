@@ -80,3 +80,11 @@ spec:
                 name: sos
                 port:
                   number: 80
+          
+          - path: /(health|docs)/coordinator(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: coordinator-service
+                port:
+                  number: 80

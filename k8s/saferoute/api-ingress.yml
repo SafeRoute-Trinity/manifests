@@ -121,4 +121,13 @@ spec:
                 name: sos
                 port:
                   number: 80
+          
+          # Coordinator API - routes /v1/coordinator/*
+          - path: /v1/coordinator
+            pathType: Prefix
+            backend:
+              service:
+                name: coordinator-service
+                port:
+                  number: 80
 
