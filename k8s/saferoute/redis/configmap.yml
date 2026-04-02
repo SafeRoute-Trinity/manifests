@@ -1,0 +1,29 @@
+# Please edit the object below. Lines beginning with a '#' will be ignored,
+# and an empty file will abort the edit. If an error occurs while saving this file will be
+# reopened with the relevant failures.
+#
+apiVersion: v1
+data:
+  REDIS_HOST: redis.saferoute.svc.cluster.local
+  REDIS_PORT: "6379"
+  redis.conf: |
+    bind 0.0.0.0
+    port 6379
+    protected-mode no
+
+    # persistence
+    appendonly yes
+    appendfilename "appendonly.aof"
+
+    # optional (keep memory use sane in small clusters)
+    maxmemory-policy allkeys-lru
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"redis.conf":"bind 0.0.0.0\nport 6379\nprotected-mode no\n\n# persistence\nappendonly yes\nappendfilename \"appendonly.aof\"\n\n# optional (keep memory use sane in small clusters)\nmaxmemory-policy allkeys-lru\n"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"redis-config","namespace":"saferoute"}}
+  creationTimestamp: "2026-02-26T13:13:20Z"
+  name: redis-config
+  namespace: saferoute
+  resourceVersion: "770167"
+  uid: 341af0a4-d73f-463a-97c8-0d63c1bdcb0f

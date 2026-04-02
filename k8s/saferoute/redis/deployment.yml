@@ -1,0 +1,101 @@
+# Please edit the object below. Lines beginning with a '#' will be ignored,
+# and an empty file will abort the edit. If an error occurs while saving this file will be
+# reopened with the relevant failures.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "4"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"name":"redis","namespace":"saferoute"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"redis"}},"template":{"metadata":{"labels":{"app":"redis"}},"spec":{"containers":[{"args":["redis-server","/etc/redis/redis.conf","--requirepass","$(REDIS_PASSWORD)"],"env":[{"name":"REDIS_PASSWORD","valueFrom":{"secretKeyRef":{"key":"REDIS_PASSWORD","name":"redis-secret"}}}],"image":"redis:7","name":"redis","ports":[{"containerPort":6379}],"resources":{"limits":{"cpu":"200m","memory":"256Mi"},"requests":{"cpu":"50m","memory":"128Mi"}},"volumeMounts":[{"mountPath":"/etc/redis","name":"redis-config-vol"},{"mountPath":"/data","name":"redis-data"}]}],"volumes":[{"configMap":{"name":"redis-config"},"name":"redis-config-vol"},{"name":"redis-data","persistentVolumeClaim":{"claimName":"redis-pvc"}}]}}}}
+  creationTimestamp: "2026-02-26T13:18:54Z"
+  generation: 4
+  name: redis
+  namespace: saferoute
+  resourceVersion: "2084641"
+  uid: aaf5bf22-5329-4b9b-ae5c-d911808f66e5
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: redis
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-02-26T14:33:27Z"
+      creationTimestamp: null
+      labels:
+        app: redis
+    spec:
+      containers:
+      - args:
+        - redis-server
+        - /etc/redis/redis.conf
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: REDIS_PASSWORD
+              name: redis-secret
+        image: redis:7
+        imagePullPolicy: IfNotPresent
+        name: redis
+        ports:
+        - containerPort: 6379
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 100m
+            memory: 256Mi
+          requests:
+            cpu: 10m
+            memory: 128Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/redis
+          name: redis-config-vol
+        - mountPath: /data
+          name: redis-data
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: redis-config
+        name: redis-config-vol
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-pvc
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2026-02-26T13:18:54Z"
+    lastUpdateTime: "2026-03-31T12:39:22Z"
+    message: ReplicaSet "redis-657cc85f96" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2026-04-02T11:29:00Z"
+    lastUpdateTime: "2026-04-02T11:29:00Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 4
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1
