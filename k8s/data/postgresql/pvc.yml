@@ -8,7 +8,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: managed  # Standard HDD - Low cost
+  storageClassName: managed
   resources:
     requests:
       storage: 50Gi

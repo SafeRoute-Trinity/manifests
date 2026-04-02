@@ -53,7 +53,7 @@ spec:
         resources:
           requests:
             memory: "256Mi"
-            cpu: "200m"
+            cpu: "100m"
           limits:
             memory: "512Mi"
             cpu: "500m"
@@ -121,7 +121,7 @@ spec:
         app: postgresql
     spec:
       accessModes: [ "ReadWriteOnce" ]
-      storageClassName: managed  # Standard HDD - Low cost
+      storageClassName: managed
       resources:
         requests:
           storage: 50Gi
