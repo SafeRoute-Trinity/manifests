@@ -7,13 +7,13 @@ metadata:
     app: notification-service
     tier: backend
 spec:
-  replicas: 1
+  replicas: 2
   revisionHistoryLimit: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: notification-service
@@ -27,6 +27,15 @@ spec:
         prometheus.io/port: "80"
         prometheus.io/path: "/metrics"
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: notification-service
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: notification-service
         image: saferoute/notification:latest
@@ -98,8 +107,8 @@ spec:
               key: TWILIO_PHONE_NUMBER
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "25m"
           limits:
             memory: "256Mi"
             cpu: "200m"

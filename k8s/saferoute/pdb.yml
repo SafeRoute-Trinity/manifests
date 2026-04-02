@@ -1,0 +1,76 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: coordinator-service-pdb
+  namespace: saferoute
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: coordinator-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: routing-service-pdb
+  namespace: saferoute
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: routing-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-management-pdb
+  namespace: saferoute
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: user-management
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: safety-scoring-pdb
+  namespace: saferoute
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: safety-scoring
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sos-pdb
+  namespace: saferoute
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: sos
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: notification-service-pdb
+  namespace: saferoute
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: notification-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: feedback-pdb
+  namespace: saferoute
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: feedback
