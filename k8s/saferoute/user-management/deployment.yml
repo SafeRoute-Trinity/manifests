@@ -68,14 +68,14 @@ spec:
         - name: POSTGRES_SSLMODE
           value: "disable"
         - name: REDIS_HOST
-          value: redis.data.svc.cluster.local
+          value: redis.saferoute.svc.cluster.local
         - name: REDIS_PORT
           value: "6379"
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
               name: redis-secret
-              key: password
+              key: REDIS_PASSWORD
         - name: AUTH0_DOMAIN
           valueFrom:
             configMapKeyRef:
