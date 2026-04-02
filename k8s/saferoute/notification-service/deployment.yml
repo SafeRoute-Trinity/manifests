@@ -54,7 +54,7 @@ spec:
             secretKeyRef:
               name: postgresql-secret
               key: password
-        - name: DATABASE_SSLMODE
+        - name: POSTGRES_SSLMODE
           value: "disable"
         - name: REDIS_HOST
           value: redis.data.svc.cluster.local
@@ -67,6 +67,35 @@ spec:
               key: password
         - name: OUTBOX_WORKER_ENABLED
           value: "true"
+        - name: RABBITMQ_HOST
+          value: rabbitmq.data.svc.cluster.local
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: username
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: password
+        - name: TWILIO_ACCOUNT_SID
+          valueFrom:
+            secretKeyRef:
+              name: twilio-secret
+              key: TWILIO_ACCOUNT_SID
+        - name: TWILIO_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: twilio-secret
+              key: TWILIO_AUTH_TOKEN
+        - name: TWILIO_PHONE_NUMBER
+          valueFrom:
+            secretKeyRef:
+              name: twilio-secret
+              key: TWILIO_PHONE_NUMBER
         resources:
           requests:
             memory: "128Mi"

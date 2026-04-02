@@ -13,9 +13,9 @@ data:
     # Enable Prometheus metrics
     prometheus.tcp.port = 15692
     
-    # Disk free space limit (1GB minimum)
-    disk_free_limit.absolute = 1GB
-    
+    # Disk free space limit
+    disk_free_limit.absolute = 200MB
+
     # Memory high watermark (40% of available memory)
     vm_memory_high_watermark.relative = 0.4
     
