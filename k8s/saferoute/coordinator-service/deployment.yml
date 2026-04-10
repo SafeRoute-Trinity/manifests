@@ -36,6 +36,7 @@ spec:
                 matchLabels:
                   app: coordinator-service
               topologyKey: kubernetes.io/hostname
+      priorityClassName: saferoute-app-high
       containers:
       - name: coordinator-service
         image: saferoute/coordinator:latest

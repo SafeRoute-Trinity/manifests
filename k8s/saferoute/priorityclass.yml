@@ -1,0 +1,7 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: saferoute-app-high
+value: 100000
+globalDefault: false
+description: "Higher priority for Saferoute app pods to reduce preemption by non-critical workloads."

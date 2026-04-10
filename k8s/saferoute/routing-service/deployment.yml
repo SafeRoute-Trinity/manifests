@@ -43,6 +43,9 @@ spec:
         ports:
         - containerPort: 80
           name: http
+        envFrom:
+        - secretRef:
+            name: routing-service-secret
         env:
         - name: POSTGRES_HOST
           value: postgresql.data.svc.cluster.local
