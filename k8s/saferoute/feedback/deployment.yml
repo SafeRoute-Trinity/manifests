@@ -36,6 +36,7 @@ spec:
                 matchLabels:
                   app: feedback
               topologyKey: kubernetes.io/hostname
+      priorityClassName: saferoute-app-high
       containers:
       - name: feedback
         image: saferoute/feedback:latest

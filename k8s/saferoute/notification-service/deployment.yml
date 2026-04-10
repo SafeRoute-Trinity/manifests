@@ -36,6 +36,7 @@ spec:
                 matchLabels:
                   app: notification-service
               topologyKey: kubernetes.io/hostname
+      priorityClassName: saferoute-app-high
       containers:
       - name: notification-service
         image: saferoute/notification:latest
