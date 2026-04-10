@@ -5,8 +5,8 @@ metadata:
   namespace: saferoute
 data:
   database.name: "saferoute"
-  # TODO: Change to your Auth0 domain
-  auth0.domain: "saferoute.eu.auth0.com"
+  # Must match JWT iss host (same tenant as mobile/web EXPO_PUBLIC_AUTH0_DOMAIN)
+  auth0.domain: "saferouteapp.eu.auth0.com"
   log.level: "info"
   # Redis cache TTL in seconds (default: 3600 = 1 hour)
   redis.cache.ttl: "3600"
