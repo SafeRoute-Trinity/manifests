@@ -86,6 +86,15 @@ spec:
                 port:
                   number: 80
           
+          # Transit API - routes /v1/transit/* (e.g. POST /v1/transit/plan)
+          - path: /v1/transit
+            pathType: Prefix
+            backend:
+              service:
+                name: routing-service
+                port:
+                  number: 80
+          
           # Safety Scoring API - routes /v1/safety/*
           - path: /v1/safety
             pathType: Prefix
